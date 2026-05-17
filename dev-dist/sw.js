@@ -81,7 +81,7 @@ define(['./workbox-b1bafff1'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.ndnrhfm8mv4"
+    "revision": "0.b4hj4b22rk8"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
@@ -96,10 +96,19 @@ define(['./workbox-b1bafff1'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
+  workbox.registerRoute(/^https:\/\/audios\.quranwbw\.com\/.*/i, new workbox.CacheFirst({
+    "cacheName": "quran-wbw-audio-cache",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 500,
+      maxAgeSeconds: 2592000
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    })]
+  }), 'GET');
   workbox.registerRoute(/^https:\/\/api\.alquran\.cloud\/.*/i, new workbox.StaleWhileRevalidate({
     "cacheName": "quran-api-cache",
     plugins: [new workbox.ExpirationPlugin({
-      maxEntries: 50,
+      maxEntries: 200,
       maxAgeSeconds: 604800
     }), new workbox.CacheableResponsePlugin({
       statuses: [0, 200]

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
+import { quranMetaData } from '../../data/quranMeta';
 import ChildMode from '../../components/ChildMode/ChildMode';
 import { useSync } from '../../contexts/SyncContext';
 import { fetchAyahText } from '../../utils/quranApi';

@@ -12,6 +12,10 @@ export function AuthProvider({ children }) {
   const [isLocalMode, setIsLocalMode] = useState(false);
 
   const loadProfile = useCallback(async (userId) => {
+    if (!supabase) {
+      console.warn('Supabase not configured, skipping profile load');
+      return;
+    }
     const { data } = await supabase
       .from('profiles')
       .select('*')
@@ -25,6 +29,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkLocalSession = useCallback(async () => {
+    if (!supabase) {
+      console.warn('Supabase not configured, running in local mode');
+      setIsLocalMode(true);
+      setLoading(false);
+      return;
+    }
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setUser(session.user);
@@ -37,6 +47,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     initLocalDB();
     checkLocalSession();
+
+    if (!supabase) {
+      return;
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
@@ -55,12 +69,14 @@ export function AuthProvider({ children }) {
   }, [checkLocalSession, loadProfile]);
 
   async function loginWithEmail(email, password) {
+    if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
   }
 
   async function signupWithEmail(email, password, fullName, role) {
+    if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
 
@@ -86,6 +102,7 @@ export function AuthProvider({ children }) {
   }
 
   async function joinFamily(email, password, familyCode) {
+    if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
 
