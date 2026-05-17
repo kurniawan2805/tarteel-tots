@@ -34,6 +34,12 @@ export default function ChildMode({
       setIsPlaying(false);
       onSessionComplete?.();
     };
+
+    return () => {
+      engine.onAyahComplete = null;
+      engine.onQueueComplete = null;
+      engine.stop();
+    };
   }, [ayahQueue, loopsPerAyah, engine, onSessionComplete]);
 
   const currentAyah = ayahQueue?.[currentAyahIndex];

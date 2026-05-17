@@ -102,6 +102,17 @@ export class AudioLoopEngine {
     this.onQueueComplete = null;
     this.isPlaying = false;
     this.isPaused = false;
+    this.isAyahEnding = false;
+    this.isPlayingCurrent = false;
+    this.retryTimeout = null;
+
+    // Bind handlers for consistent `this`
+    this.audio.onended = () => this.onAyahEnded();
+    this.audio.onerror = () => {
+      // Attempt a debounce retry when errors happen
+      this.isPlayingCurrent = false;
+      this.debounceRetry();
+    };
   }
 
   setQueue(queue, loopsPerAyah = 5) {
@@ -112,8 +123,15 @@ export class AudioLoopEngine {
   }
 
   async playCurrent() {
+    if (this.isPlayingCurrent || this.isPaused) {
+      return;
+    }
+    this.isPlayingCurrent = true;
+
     if (this.currentIndex >= this.currentQueue.length) {
+      this.stop();
       this.onQueueComplete?.();
+      this.isPlayingCurrent = false;
       return;
     }
 
@@ -121,19 +139,35 @@ export class AudioLoopEngine {
     const url = getAudioUrl(ayah.surah, ayah.ayah_number, ayah.qari);
 
     this.audio.src = url;
-    this.audio.onended = () => this.onAyahEnded();
-    this.audio.onerror = () => this.onAyahEnded();
 
     try {
       await this.audio.play();
       this.isPlaying = true;
       this.isPaused = false;
+      this.isPlayingCurrent = false;
     } catch (e) {
       console.error('Playback failed:', e);
+      this.isPlayingCurrent = false;
+      this.debounceRetry();
     }
   }
 
+  debounceRetry() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+    }
+    this.retryTimeout = setTimeout(() => {
+      this.retryTimeout = null;
+      if (!this.isPaused && !this.isAyahEnding) {
+        this.playCurrent();
+      }
+    }, 500);
+  }
+
   onAyahEnded() {
+    if (this.isAyahEnding) return;
+    this.isAyahEnding = true;
+
     this.loopCount++;
     if (this.loopCount >= this.maxLoops) {
       this.loopCount = 0;
@@ -142,11 +176,18 @@ export class AudioLoopEngine {
     }
 
     if (this.currentIndex >= this.currentQueue.length) {
+      this.stop();
       this.isPlaying = false;
       this.onQueueComplete?.();
     } else {
-      this.playCurrent();
+      this.isPlayingCurrent = false;
+      // Play next ayah after small tick to avoid deep synchronous recursion
+      setTimeout(() => {
+        this.playCurrent();
+      }, 50);
     }
+
+    this.isAyahEnding = false;
   }
 
   pause() {
@@ -160,17 +201,24 @@ export class AudioLoopEngine {
   }
 
   stop() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
     this.audio.pause();
-    this.audio.currentTime = 0;
+    try { this.audio.currentTime = 0; } catch (e) {}
     this.isPlaying = false;
     this.isPaused = false;
     this.loopCount = 0;
+    this.isPlayingCurrent = false;
+    this.isAyahEnding = false;
   }
 
   skipToNext() {
     this.loopCount = 0;
     this.currentIndex++;
     if (this.currentIndex < this.currentQueue.length) {
+      this.isPlayingCurrent = false;
       this.playCurrent();
     } else {
       this.stop();
