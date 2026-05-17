@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { quranMetaData } from '../../data/quranMeta';
@@ -9,7 +9,8 @@ import { fetchAyahText } from '../../utils/quranApi';
 
 export default function ChildPlayPage() {
   const { childId } = useParams();
-  const { saveSession } = useSync();
+  const navigate = useNavigate();
+  const { saveSession, saveProgress } = useSync();
 
   const child = useLiveQuery(() => db.children.get(parseInt(childId)), [childId]);
   const progress = useLiveQuery(() => db.progress.where('child_id').equals(parseInt(childId)).toArray(), [childId]);
@@ -22,8 +23,8 @@ export default function ChildPlayPage() {
   const [sessionStartTime, setSessionStartTime] = useState(null);
   const [ayahQueue, setAyahQueue] = useState([]);
 
-  const baseQueue = useMemo(() => {
-    if (!child || !settings || !progress) return [];
+  const { queue: baseQueue, nextBaseline } = useMemo(() => {
+    if (!child || !settings || !progress) return { queue: [], nextBaseline: null };
     
     const baseline = child.memorization_baseline || {};
     let currentSurah = baseline.current_surah || 1;
@@ -40,7 +41,8 @@ export default function ChildPlayPage() {
         surah: currentSurah,
         surah_name: surahMeta.transliteration,
         ayah_number: currentAyah,
-        qari
+        qari,
+        isNew: true
       });
 
       currentAyah++;
@@ -64,15 +66,19 @@ export default function ChildPlayPage() {
       surah_name: quranMetaData[p.surah]?.transliteration || p.surah_name,
       ayah_number: p.ayah_number,
       qari,
-      text: p.ayah_text
+      text: p.ayah_text,
+      isNew: false
     }));
 
-    return [...reviewQueue, ...queue];
+    return {
+      queue: [...reviewQueue, ...queue],
+      nextBaseline: { current_surah: currentSurah, current_ayah: currentAyah }
+    };
   }, [child, progress, settings]);
 
   useEffect(() => {
     async function loadText() {
-      if (baseQueue.length === 0) return;
+      if (!baseQueue || baseQueue.length === 0) return;
       
       const fullQueue = await Promise.all(baseQueue.map(async (item) => {
         if (item.text) return item;
@@ -90,6 +96,7 @@ export default function ChildPlayPage() {
     const endTime = Date.now();
     const duration = Math.round((endTime - sessionStartTime) / 1000);
 
+    // 1. Save Session
     await saveSession({
       child_id: parseInt(childId),
       date: new Date().toISOString().split('T')[0],
@@ -99,7 +106,32 @@ export default function ChildPlayPage() {
       audio_only_time: 0
     });
 
+    // 2. Save Progress for new ayahs
+    const newAyahs = ayahQueue.filter(item => item.isNew);
+    for (const item of newAyahs) {
+      await saveProgress({
+        child_id: parseInt(childId),
+        surah: item.surah,
+        surah_name: item.surah_name,
+        ayah_number: item.ayah_number,
+        ayah_text: item.text,
+        grade: 'good',
+        next_review: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        last_review: new Date().toISOString(),
+        repetition_count: 1
+      });
+    }
+
+    // 3. Advance Baseline
+    if (nextBaseline) {
+      await db.children.update(parseInt(childId), {
+        'memorization_baseline.current_surah': nextBaseline.current_surah,
+        'memorization_baseline.current_ayah': nextBaseline.current_ayah
+      });
+    }
+
     setSessionStarted(false);
+    navigate('/dashboard');
   };
 
   if (!child || !settings) {

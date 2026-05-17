@@ -7,6 +7,7 @@ import { useSync } from '../../contexts/SyncContext';
 import { getStreakDays, getGardenStage } from '../../utils/spacedRepetition';
 import Garden, { GardenProgress } from '../../components/Garden/Garden';
 import { quranMetaData } from '../../data/quranMeta';
+import { fetchAyahText } from '../../utils/quranApi';
 
 const QARI_NAMES = {
   'ar.alafasy': 'Mishary Alafasy',
@@ -17,7 +18,7 @@ const QARI_NAMES = {
 export default function ParentDashboard() {
   const navigate = useNavigate();
   const { user, logout, isLocalMode } = useAuth();
-  const { online, syncing, lastSync, performSync } = useSync();
+  const { online, syncing, lastSync, performSync, saveProgress } = useSync();
 
   const children = useLiveQuery(() => db.children.toArray(), []);
   const sessions = useLiveQuery(() => db.sessions.toArray(), []);
@@ -29,6 +30,8 @@ export default function ParentDashboard() {
 
   const [selectedChild, setSelectedChild] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
+  const [isAddingManual, setIsAddingManual] = useState(false);
+  const [manualEntry, setManualEntry] = useState({ surah: 1, ayah: 1 });
 
   useEffect(() => {
     if (children?.length > 0 && !selectedChild) {
@@ -53,6 +56,25 @@ export default function ParentDashboard() {
   const childStreak = selectedChild
     ? getStreakDays(sessions?.filter(s => s.child_id === selectedChild.id) || [])
     : 0;
+
+  const handleManualAdd = async () => {
+    if (!selectedChild) return;
+    
+    const text = await fetchAyahText(manualEntry.surah, manualEntry.ayah);
+    await saveProgress({
+      child_id: selectedChild.id,
+      surah: manualEntry.surah,
+      surah_name: quranMetaData[manualEntry.surah].transliteration,
+      ayah_number: manualEntry.ayah,
+      ayah_text: text,
+      grade: 'perfect',
+      next_review: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      last_review: new Date().toISOString(),
+      repetition_count: 1
+    });
+    
+    setIsAddingManual(false);
+  };
 
   return (
     <div className="min-h-screen bg-bg pb-20">
@@ -173,7 +195,48 @@ export default function ParentDashboard() {
 
         {activeTab === 'progress' && (
           <div className="card">
-            <h2 className="text-lg font-bold text-text mb-4">Progress</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-text">Progress</h2>
+              <button
+                onClick={() => setIsAddingManual(!isAddingManual)}
+                className="text-primary text-sm font-bold"
+              >
+                {isAddingManual ? 'Cancel' : '+ Manually Add'}
+              </button>
+            </div>
+
+            {isAddingManual && (
+              <div className="bg-bg-dark p-4 rounded-xl mb-6 animate-grow">
+                <p className="text-xs font-bold text-text-muted uppercase mb-3 text-center">Add Memorized Ayah</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <select
+                    value={manualEntry.surah}
+                    onChange={(e) => setManualEntry({ ...manualEntry, surah: parseInt(e.target.value), ayah: 1 })}
+                    className="input-field py-2 text-sm"
+                  >
+                    {quranMetaData.slice(1).map((s) => (
+                      <option key={s.id} value={s.id}>{s.id}. {s.transliteration}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={manualEntry.ayah}
+                    onChange={(e) => setManualEntry({ ...manualEntry, ayah: parseInt(e.target.value) })}
+                    className="input-field py-2 text-sm"
+                  >
+                    {Array.from({ length: quranMetaData[manualEntry.surah]?.verses || 0 }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>Ayah {n}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handleManualAdd}
+                  className="btn-primary w-full py-2 text-sm"
+                >
+                  Confirm Entry
+                </button>
+              </div>
+            )}
+
             {selectedChild && (
               <>
                 <p className="text-sm text-text-muted mb-3">
