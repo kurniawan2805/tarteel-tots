@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { SyncProvider } from './contexts/SyncContext';
+import InstallPrompt from './components/common/InstallPrompt';
 
 const LoginPage = lazy(() => import('./pages/Auth/LoginPage'));
 const SignupPage = lazy(() => import('./pages/Auth/SignupPage'));
@@ -144,6 +145,7 @@ export default function App() {
       <AuthProvider>
         <SyncProvider>
           <AppRoutes />
+          <InstallPrompt />
         </SyncProvider>
       </AuthProvider>
     </BrowserRouter>
