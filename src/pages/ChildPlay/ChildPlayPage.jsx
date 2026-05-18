@@ -85,7 +85,12 @@ export default function ChildPlayPage() {
           curA++;
           if (curA > surahMeta.verses) {
             curA = 1;
-            curS = (curS % 114) + 1;
+            if (child.direction === 'backwards') {
+              curS = curS - 1;
+              if (curS < 1) curS = 114;
+            } else {
+              curS = (curS % 114) + 1;
+            }
           }
         }
       }
@@ -127,7 +132,12 @@ export default function ChildPlayPage() {
       let nextA = lastAyah.ayah_number + 1;
       if (nextA > quranMetaData[nextS].verses) {
         nextA = 1;
-        nextS = (nextS % 114) + 1;
+        if (child.direction === 'backwards') {
+          nextS = nextS - 1;
+          if (nextS < 1) nextS = 114;
+        } else {
+          nextS = (nextS % 114) + 1;
+        }
       }
 
       await db.children.update(parseInt(childId), {

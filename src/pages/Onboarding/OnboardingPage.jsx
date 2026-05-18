@@ -15,8 +15,8 @@ const AVATARS = [
 ];
 
 const LEARNING_PATHS = [
+  { id: 'juz_amma', name: 'Juz Amma Path', description: 'Start from An-Nas, work backwards.', surah: 1, ayah: 1, direction: 'backwards' },
   { id: 'standard', name: 'Standard Path', description: 'Start from Al-Fatihah, move forward.', surah: 1, ayah: 1, direction: 'forwards' },
-  { id: 'juz_amma', name: 'Juz Amma Path', description: 'Start from An-Nas, work backwards.', surah: 114, ayah: 1, direction: 'backwards' },
   { id: 'custom', name: 'Custom Starting Point', description: 'Choose your own Surah and direction.', surah: 1, ayah: 1, direction: 'forwards' }
 ];
 
@@ -29,10 +29,10 @@ export default function OnboardingPage() {
     name: '',
     age: 4,
     avatar: '☀️',
-    learning_path: 'standard',
+    learning_path: 'juz_amma',
     current_surah: 1,
     current_ayah: 1,
-    direction: 'forwards',
+    direction: 'backwards',
     daily_goal_minutes: 10
   });
 
@@ -70,10 +70,10 @@ export default function OnboardingPage() {
       name: '',
       age: 4,
       avatar: '☀️',
-      learning_path: 'standard',
+      learning_path: 'juz_amma',
       current_surah: 1,
       current_ayah: 1,
-      direction: 'forwards',
+      direction: 'backwards',
       daily_goal_minutes: 10
     });
   };

@@ -458,6 +458,34 @@ export default function ParentDashboard() {
                         </div>
                       ) : (
                         <>
+                          {/* Juz Amma Section - REVERSED ORDER (114 -> 78) */}
+                          <div>
+                            <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">Juz Amma (Reversed)</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[...quranMetaData.slice(78)].reverse().map(s => {
+                                const isMemorized = memorizedSurahIds.has(s.id);
+                                if (!showMemorizedInList && isMemorized) return null;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => toggleSurahSelection(s.id)}
+                                    className={`p-2 text-xs rounded-lg border text-left transition-all relative ${
+                                      (manualAddMode === 'surah' ? selectedSurahs.includes(s.id) : manualEntry.surah === s.id) 
+                                        ? 'bg-primary border-primary text-white font-bold' 
+                                        : 'bg-white border-gray-100 text-text'
+                                    } ${isMemorized ? 'opacity-60 ring-1 ring-gold ring-inset' : ''}`}
+                                  >
+                                    {manualAddMode === 'surah' && (
+                                      <span className="mr-1">{selectedSurahs.includes(s.id) ? '☑️' : '⬜'}</span>
+                                    )}
+                                    {s.transliteration}
+                                    {isMemorized && <span className="absolute top-1 right-1 text-[8px]">⭐</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
                           {/* Recent Section */}
                           {recentSurahs.length > 0 && (
                             <div>
@@ -488,34 +516,6 @@ export default function ParentDashboard() {
                               </div>
                             </div>
                           )}
-
-                          {/* Juz Amma Section - REVERSED ORDER (114 -> 78) */}
-                          <div>
-                            <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">Juz Amma (Reversed)</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {[...quranMetaData.slice(78)].reverse().map(s => {
-                                const isMemorized = memorizedSurahIds.has(s.id);
-                                if (!showMemorizedInList && isMemorized) return null;
-                                return (
-                                  <button
-                                    key={s.id}
-                                    onClick={() => toggleSurahSelection(s.id)}
-                                    className={`p-2 text-xs rounded-lg border text-left transition-all relative ${
-                                      (manualAddMode === 'surah' ? selectedSurahs.includes(s.id) : manualEntry.surah === s.id) 
-                                        ? 'bg-primary border-primary text-white font-bold' 
-                                        : 'bg-white border-gray-100 text-text'
-                                    } ${isMemorized ? 'opacity-60 ring-1 ring-gold ring-inset' : ''}`}
-                                  >
-                                    {manualAddMode === 'surah' && (
-                                      <span className="mr-1">{selectedSurahs.includes(s.id) ? '☑️' : '⬜'}</span>
-                                    )}
-                                    {s.transliteration}
-                                    {isMemorized && <span className="absolute top-1 right-1 text-[8px]">⭐</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
 
                           {/* All Surahs Section */}
                           <div>

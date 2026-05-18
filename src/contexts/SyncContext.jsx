@@ -12,34 +12,40 @@ export function SyncProvider({ children }) {
   const [online, setOnline] = useState(navigator.onLine);
 
   const processEventLocally = useCallback(async (event) => {
-    const { type, payload, child_id } = event;
+    const { type, payload, child_id, client_timestamp } = event;
 
     switch (type) {
       case 'GRADED_CHUNK': {
         // Update local progress Read Model
         const { surah, chunkId, level, nextSuggested, lastGrade } = payload;
         const existing = await db.progress.where({ child_id, surah, chunkId }).first();
-        if (existing) {
-          await db.progress.update(existing.id, {
-            level,
-            lastGrade,
-            lastReviewed: event.client_timestamp,
-            nextSuggested,
-            synced: 1
-          });
-        } else {
-          await db.progress.add({
-            child_id,
-            surah,
-            chunkId,
-            level,
-            lastGrade,
-            lastReviewed: event.client_timestamp,
-            nextSuggested,
-            favorite: false,
-            created_at: event.client_timestamp,
-            synced: 1
-          });
+        
+        // Collision Resolution: Only update if event is newer than existing local state
+        const isNewer = !existing || new Date(client_timestamp) > new Date(existing.lastReviewed);
+        
+        if (isNewer) {
+          if (existing) {
+            await db.progress.update(existing.id, {
+              level,
+              lastGrade,
+              lastReviewed: client_timestamp,
+              nextSuggested,
+              synced: 1
+            });
+          } else {
+            await db.progress.add({
+              child_id,
+              surah,
+              chunkId,
+              level,
+              lastGrade,
+              lastReviewed: client_timestamp,
+              nextSuggested,
+              favorite: false,
+              created_at: client_timestamp,
+              synced: 1
+            });
+          }
         }
         break;
       }

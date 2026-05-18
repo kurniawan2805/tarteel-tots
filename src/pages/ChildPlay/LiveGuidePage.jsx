@@ -54,7 +54,12 @@ export default function LiveGuidePage() {
       
       if (nextA > surahMeta.verses) {
         nextA = 1;
-        nextS = (nextS % 114) + 1;
+        if (child.direction === 'backwards') {
+          nextS = nextS - 1;
+          if (nextS < 1) nextS = 114;
+        } else {
+          nextS = (nextS % 114) + 1;
+        }
       }
       
       await db.children.update(child.id, {
@@ -77,7 +82,13 @@ export default function LiveGuidePage() {
         ...chunks[currentIndex + 1]
       });
     } else {
-      const nextS = (currentChunk.surah % 114) + 1;
+      let nextS;
+      if (child.direction === 'backwards') {
+        nextS = currentChunk.surah - 1;
+        if (nextS < 1) nextS = 114;
+      } else {
+        nextS = (currentChunk.surah % 114) + 1;
+      }
       const nextSurahMeta = quranMetaData[nextS];
       const nextChunks = getSurahChunks(nextS, nextSurahMeta.verses);
       setCurrentChunk({
