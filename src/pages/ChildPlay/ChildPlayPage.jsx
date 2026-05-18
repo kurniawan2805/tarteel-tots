@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { quranMetaData } from '../../data/quranMeta';
 import ChildMode from '../../components/ChildMode/ChildMode';
-import { useSync } from '../../contexts/SyncContext';
+import { useSync } from '../../hooks/useSync';
 import { fetchAyahText } from '../../utils/quranApi';
 
 export default function ChildPlayPage() {

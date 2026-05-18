@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { QuickGrade } from '../GradingPanel/GradingPanel';
 import { playChime } from '../../utils/audioEngine';
 
-export default function LiveGuideMode({ child, ayah, onComplete, onGrade }) {
+export default function LiveGuideMode({ child, ayah, onComplete, onGrade, onSessionComplete }) {
   const [repetitionCount, setRepetitionCount] = useState(0);
   const [sessionComplete, setSessionComplete] = useState(false);
 
@@ -31,16 +31,24 @@ export default function LiveGuideMode({ child, ayah, onComplete, onGrade }) {
           <p className="text-text-muted mb-4">
             {child.name} completed {repetitionCount} repetitions
           </p>
-          <button
-            onClick={() => {
-              setSessionComplete(false);
-              setRepetitionCount(0);
-              onComplete?.();
-            }}
-            className="btn-primary w-full"
-          >
-            Next Ayah
-          </button>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => {
+                setSessionComplete(false);
+                setRepetitionCount(0);
+                onComplete?.();
+              }}
+              className="btn-primary w-full"
+            >
+              Next Ayah
+            </button>
+            <button
+              onClick={onSessionComplete}
+              className="btn-secondary w-full"
+            >
+              Finish Session
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { useSync } from '../../contexts/SyncContext';
-import { getStreakDays, getGardenStage } from '../../utils/spacedRepetition';
+import { useAuth } from '../../hooks/useAuth';
+import { useSync } from '../../hooks/useSync';
+import { getStreakDays } from '../../utils/spacedRepetition';
 import Garden, { GardenProgress } from '../../components/Garden/Garden';
 import { quranMetaData } from '../../data/quranMeta';
 import { fetchAyahText, fetchSurahText } from '../../utils/quranApi';
@@ -17,8 +17,8 @@ const QARI_NAMES = {
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
-  const { user, logout, isLocalMode } = useAuth();
-  const { online, syncing, lastSync, performSync, saveProgress } = useSync();
+  const { logout, isLocalMode } = useAuth();
+  const { online, syncing, lastSync, saveProgress } = useSync();
 
   const children = useLiveQuery(() => db.children.toArray(), []);
   const sessions = useLiveQuery(() => db.sessions.toArray(), []);
@@ -33,11 +33,30 @@ export default function ParentDashboard() {
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [manualAddMode, setManualAddMode] = useState('single'); // 'single', 'range', 'surah'
   const [manualEntry, setManualEntry] = useState({ surah: 1, ayah: 1, endAyah: 1 });
+  const [selectedSurahs, setSelectedSurahs] = useState([]); // Array of surah IDs for bulk add
   const [searchTerm, setSearchTerm] = useState('');
+  const [showMemorizedInList, setShowMemorizedInList] = useState(false);
   const [recentSurahs, setRecentSurahs] = useState(() => {
     const saved = localStorage.getItem('recent_surahs');
     return saved ? JSON.parse(saved) : [];
   });
+
+  const memorizedSurahIds = useMemo(() => {
+    if (!selectedChild || !progress) return new Set();
+    const childProgress = progress.filter(p => p.child_id === selectedChild.id);
+    return new Set(childProgress.map(p => p.surah));
+  }, [progress, selectedChild]);
+
+  const toggleSurahSelection = (id) => {
+    if (manualAddMode === 'surah') {
+      setSelectedSurahs(prev => 
+        prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
+      );
+    } else {
+      setManualEntry({ ...manualEntry, surah: id, ayah: 1, endAyah: 1 });
+      setSelectedSurahs([id]);
+    }
+  };
 
   const updateRecentSurahs = (surahId) => {
     const updated = [surahId, ...recentSurahs.filter(id => id !== surahId)].slice(0, 5);
@@ -97,7 +116,11 @@ export default function ParentDashboard() {
 
   useEffect(() => {
     if (children?.length > 0 && !selectedChild) {
-      setSelectedChild(children[0]);
+      const firstChild = children[0];
+      const timer = setTimeout(() => {
+        setSelectedChild(firstChild);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [children, selectedChild]);
 
@@ -123,24 +146,26 @@ export default function ParentDashboard() {
     if (!selectedChild) return;
     
     let ayahsToAdd = [];
-    
-    if (manualAddMode === 'single') {
-      const text = await fetchAyahText(manualEntry.surah, manualEntry.ayah);
-      if (text) ayahsToAdd.push({ surah: manualEntry.surah, ayah: manualEntry.ayah, text });
-    } else if (manualAddMode === 'range') {
-      const surahData = await fetchSurahText(manualEntry.surah);
-      if (surahData) {
-        const start = Math.min(manualEntry.ayah, manualEntry.endAyah);
-        const end = Math.max(manualEntry.ayah, manualEntry.endAyah);
-        for (let i = start; i <= end; i++) {
-          const ayahData = surahData.find(a => a.numberInSurah === i);
-          if (ayahData) ayahsToAdd.push({ surah: manualEntry.surah, ayah: i, text: ayahData.text });
+    const surahsToProcess = manualAddMode === 'surah' ? selectedSurahs : [manualEntry.surah];
+
+    for (const surahId of surahsToProcess) {
+      if (manualAddMode === 'single') {
+        const text = await fetchAyahText(surahId, manualEntry.ayah);
+        if (text) ayahsToAdd.push({ surah: surahId, ayah: manualEntry.ayah, text });
+      } else {
+        const surahData = await fetchSurahText(surahId);
+        if (surahData) {
+          if (manualAddMode === 'range') {
+            const start = Math.min(manualEntry.ayah, manualEntry.endAyah);
+            const end = Math.max(manualEntry.ayah, manualEntry.endAyah);
+            for (let i = start; i <= end; i++) {
+              const ayahData = surahData.find(a => a.numberInSurah === i);
+              if (ayahData) ayahsToAdd.push({ surah: surahId, ayah: i, text: ayahData.text });
+            }
+          } else if (manualAddMode === 'surah') {
+            ayahsToAdd.push(...surahData.map(a => ({ surah: surahId, ayah: a.numberInSurah, text: a.text })));
+          }
         }
-      }
-    } else if (manualAddMode === 'surah') {
-      const surahData = await fetchSurahText(manualEntry.surah);
-      if (surahData) {
-        ayahsToAdd = surahData.map(a => ({ surah: manualEntry.surah, ayah: a.numberInSurah, text: a.text }));
       }
     }
 
@@ -148,22 +173,28 @@ export default function ParentDashboard() {
     const nextReview = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     for (const item of ayahsToAdd) {
-      await saveProgress({
-        child_id: selectedChild.id,
-        surah: item.surah,
-        surah_name: quranMetaData[item.surah].transliteration,
-        ayah_number: item.ayah,
-        ayah_text: item.text,
-        grade: 'perfect',
-        next_review: nextReview,
-        last_review: now,
-        repetition_count: 1
-      });
+      const exists = progress.find(p => p.child_id === selectedChild.id && p.surah === item.surah && p.ayah_number === item.ayah);
+      if (!exists) {
+        await saveProgress({
+          child_id: selectedChild.id,
+          surah: item.surah,
+          surah_name: quranMetaData[item.surah].transliteration,
+          ayah_number: item.ayah,
+          ayah_text: item.text,
+          grade: 'perfect',
+          next_review: nextReview,
+          last_review: now,
+          repetition_count: 1
+        });
+      }
     }
 
-    updateRecentSurahs(manualEntry.surah);
+    if (surahsToProcess.length > 0) {
+      updateRecentSurahs(surahsToProcess[0]);
+    }
     
     setIsAddingManual(false);
+    setSelectedSurahs([]);
     setManualAddMode('single');
   };
 
@@ -198,7 +229,6 @@ export default function ParentDashboard() {
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {children?.map((child) => {
                   const streak = getStreakDays(sessions?.filter(s => s.child_id === child.id) || []);
-                  const { emoji } = getGardenStage(streak);
                   return (
                     <button
                       key={child.id}
@@ -305,7 +335,10 @@ export default function ParentDashboard() {
                   {['single', 'range', 'surah'].map(mode => (
                     <button
                       key={mode}
-                      onClick={() => setManualAddMode(mode)}
+                      onClick={() => {
+                        setManualAddMode(mode);
+                        setSelectedSurahs([]); // Clear bulk selection when mode changes
+                      }}
                       className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
                         manualAddMode === mode ? 'bg-primary text-white shadow-sm' : 'text-text-muted'
                       }`}
@@ -317,7 +350,17 @@ export default function ParentDashboard() {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-text-muted uppercase ml-1 mb-2">Select Surah</label>
+                    <div className="flex justify-between items-center ml-1 mb-2">
+                      <label className="block text-[10px] font-bold text-text-muted uppercase">Select Surah</label>
+                      <button 
+                        onClick={() => setShowMemorizedInList(!showMemorizedInList)}
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded border transition-colors ${
+                          showMemorizedInList ? 'bg-primary text-white border-primary' : 'bg-white text-text-muted border-gray-200'
+                        }`}
+                      >
+                        {showMemorizedInList ? 'SHOWING ALL' : 'HIDING MEMORIZED'}
+                      </button>
+                    </div>
                     
                     {/* Search Bar */}
                     <div className="relative mb-3">
@@ -336,22 +379,29 @@ export default function ParentDashboard() {
                         /* Search Results */
                         <div className="grid grid-cols-2 gap-2">
                           {quranMetaData.slice(1)
-                            .filter(s => 
-                              s.transliteration.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              s.id.toString() === searchTerm
-                            )
+                            .filter(s => {
+                              const matchesSearch = s.transliteration.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toString() === searchTerm;
+                              const isMemorized = memorizedSurahIds.has(s.id);
+                              return matchesSearch && (showMemorizedInList || !isMemorized);
+                            })
                             .map(s => (
                               <button
                                 key={s.id}
                                 onClick={() => {
-                                  setManualEntry({ ...manualEntry, surah: s.id, ayah: 1, endAyah: 1 });
-                                  setSearchTerm('');
+                                  toggleSurahSelection(s.id);
+                                  if (manualAddMode !== 'surah') setSearchTerm('');
                                 }}
-                                className={`p-2 text-xs rounded-lg border text-left transition-all ${
-                                  manualEntry.surah === s.id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
-                                }`}
+                                className={`p-2 text-xs rounded-lg border text-left transition-all relative ${
+                                  (manualAddMode === 'surah' ? selectedSurahs.includes(s.id) : manualEntry.surah === s.id) 
+                                    ? 'bg-primary border-primary text-white font-bold' 
+                                    : 'bg-white border-gray-100 text-text'
+                                } ${memorizedSurahIds.has(s.id) ? 'opacity-60 ring-1 ring-gold ring-inset' : ''}`}
                               >
+                                {manualAddMode === 'surah' && (
+                                  <span className="mr-1">{selectedSurahs.includes(s.id) ? '☑️' : '⬜'}</span>
+                                )}
                                 {s.id}. {s.transliteration}
+                                {memorizedSurahIds.has(s.id) && <span className="absolute top-1 right-1 text-[8px]">⭐</span>}
                               </button>
                             ))
                           }
@@ -365,15 +415,23 @@ export default function ParentDashboard() {
                               <div className="grid grid-cols-2 gap-2">
                                 {recentSurahs.map(id => {
                                   const s = quranMetaData[id];
+                                  const isMemorized = memorizedSurahIds.has(id);
+                                  if (!showMemorizedInList && isMemorized) return null;
                                   return (
                                     <button
                                       key={id}
-                                      onClick={() => setManualEntry({ ...manualEntry, surah: id, ayah: 1, endAyah: 1 })}
-                                      className={`p-2 text-xs rounded-lg border text-left transition-all ${
-                                        manualEntry.surah === id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
-                                      }`}
+                                      onClick={() => toggleSurahSelection(id)}
+                                      className={`p-2 text-xs rounded-lg border text-left transition-all relative ${
+                                        (manualAddMode === 'surah' ? selectedSurahs.includes(id) : manualEntry.surah === id) 
+                                          ? 'bg-primary border-primary text-white font-bold' 
+                                          : 'bg-white border-gray-100 text-text'
+                                      } ${isMemorized ? 'opacity-60 ring-1 ring-gold ring-inset' : ''}`}
                                     >
+                                      {manualAddMode === 'surah' && (
+                                        <span className="mr-1">{selectedSurahs.includes(id) ? '☑️' : '⬜'}</span>
+                                      )}
                                       {s.transliteration}
+                                      {isMemorized && <span className="absolute top-1 right-1 text-[8px]">⭐</span>}
                                     </button>
                                   );
                                 })}
@@ -381,21 +439,31 @@ export default function ParentDashboard() {
                             </div>
                           )}
 
-                          {/* Juz Amma Section */}
+                          {/* Juz Amma Section - REVERSED ORDER (114 -> 78) */}
                           <div>
-                            <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">Juz Amma</p>
+                            <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">Juz Amma (Reversed)</p>
                             <div className="grid grid-cols-2 gap-2">
-                              {quranMetaData.slice(78).map(s => (
-                                <button
-                                  key={s.id}
-                                  onClick={() => setManualEntry({ ...manualEntry, surah: s.id, ayah: 1, endAyah: 1 })}
-                                  className={`p-2 text-xs rounded-lg border text-left transition-all ${
-                                    manualEntry.surah === s.id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
-                                  }`}
-                                >
-                                  {s.transliteration}
-                                </button>
-                              ))}
+                              {[...quranMetaData.slice(78)].reverse().map(s => {
+                                const isMemorized = memorizedSurahIds.has(s.id);
+                                if (!showMemorizedInList && isMemorized) return null;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => toggleSurahSelection(s.id)}
+                                    className={`p-2 text-xs rounded-lg border text-left transition-all relative ${
+                                      (manualAddMode === 'surah' ? selectedSurahs.includes(s.id) : manualEntry.surah === s.id) 
+                                        ? 'bg-primary border-primary text-white font-bold' 
+                                        : 'bg-white border-gray-100 text-text'
+                                    } ${isMemorized ? 'opacity-60 ring-1 ring-gold ring-inset' : ''}`}
+                                  >
+                                    {manualAddMode === 'surah' && (
+                                      <span className="mr-1">{selectedSurahs.includes(s.id) ? '☑️' : '⬜'}</span>
+                                    )}
+                                    {s.transliteration}
+                                    {isMemorized && <span className="absolute top-1 right-1 text-[8px]">⭐</span>}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
 
@@ -403,17 +471,27 @@ export default function ParentDashboard() {
                           <div>
                             <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">All Surahs</p>
                             <div className="grid grid-cols-2 gap-2">
-                              {quranMetaData.slice(1, 78).map(s => (
-                                <button
-                                  key={s.id}
-                                  onClick={() => setManualEntry({ ...manualEntry, surah: s.id, ayah: 1, endAyah: 1 })}
-                                  className={`p-2 text-xs rounded-lg border text-left transition-all ${
-                                    manualEntry.surah === s.id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
-                                  }`}
-                                >
-                                  {s.id}. {s.transliteration}
-                                </button>
-                              ))}
+                              {quranMetaData.slice(1, 78).map(s => {
+                                const isMemorized = memorizedSurahIds.has(s.id);
+                                if (!showMemorizedInList && isMemorized) return null;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => toggleSurahSelection(s.id)}
+                                    className={`p-2 text-xs rounded-lg border text-left transition-all relative ${
+                                      (manualAddMode === 'surah' ? selectedSurahs.includes(s.id) : manualEntry.surah === s.id) 
+                                        ? 'bg-primary border-primary text-white font-bold' 
+                                        : 'bg-white border-gray-100 text-text'
+                                    } ${isMemorized ? 'opacity-60 ring-1 ring-gold ring-inset' : ''}`}
+                                  >
+                                    {manualAddMode === 'surah' && (
+                                      <span className="mr-1">{selectedSurahs.includes(s.id) ? '☑️' : '⬜'}</span>
+                                    )}
+                                    {s.id}. {s.transliteration}
+                                    {isMemorized && <span className="absolute top-1 right-1 text-[8px]">⭐</span>}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         </>

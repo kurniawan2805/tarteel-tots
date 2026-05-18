@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import LiveGuideMode from '../../components/LiveGuide/LiveGuideMode';
-import { useSync } from '../../contexts/SyncContext';
+import { useSync } from '../../hooks/useSync';
 
 export default function LiveGuidePage() {
   const { childId } = useParams();
@@ -18,15 +18,18 @@ export default function LiveGuidePage() {
   const [ayahsCompleted, setAyahsCompleted] = useState([]);
 
   useEffect(() => {
-    if (child && !sessionStarted) {
+    if (child && !sessionStarted && !currentAyah) {
       const baseline = child.memorization_baseline || {};
-      setCurrentAyah({
-        surah: baseline.current_surah || 1,
-        ayah_number: baseline.current_ayah || 1,
-        surah_name: `Surah ${baseline.current_surah || 1}`
-      });
+      const timer = setTimeout(() => {
+        setCurrentAyah({
+          surah: baseline.current_surah || 1,
+          ayah_number: baseline.current_ayah || 1,
+          surah_name: `Surah ${baseline.current_surah || 1}`
+        });
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [child, sessionStarted]);
+  }, [child, sessionStarted, currentAyah]);
 
   const handleGrade = async (gradeData) => {
     await saveProgress({
@@ -46,7 +49,7 @@ export default function LiveGuidePage() {
     }
   };
 
-  const handleSessionComplete = async () => {
+  const finalizeSession = async () => {
     const endTime = Date.now();
     const duration = Math.round((endTime - sessionStartTime) / 1000);
 
@@ -109,6 +112,7 @@ export default function LiveGuidePage() {
       ayah={currentAyah}
       onGrade={handleGrade}
       onComplete={handleNextAyah}
+      onSessionComplete={finalizeSession}
     />
   );
 }

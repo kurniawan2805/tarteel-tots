@@ -1,9 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '../db/dexie';
 import { syncToCloud, pullFromCloud, subscribeToProgress } from '../db/supabase';
-import { useAuth } from './AuthContext';
-
-const SyncContext = createContext(null);
+import { useAuth } from '../hooks/useAuth';
+import { SyncContext } from './SyncContextInstance';
 
 export function SyncProvider({ children }) {
   const { user, familyId, isLocalMode } = useAuth();
@@ -51,7 +50,11 @@ export function SyncProvider({ children }) {
 
   useEffect(() => {
     if (online && user && !isLocalMode) {
-      performSync();
+      // Small delay or microtask to avoid synchronous setState during render cycle
+      const timer = setTimeout(() => {
+        performSync();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [online, user, isLocalMode, performSync]);
 
@@ -113,10 +116,4 @@ export function SyncProvider({ children }) {
       {children}
     </SyncContext.Provider>
   );
-}
-
-export function useSync() {
-  const context = useContext(SyncContext);
-  if (!context) throw new Error('useSync must be used within SyncProvider');
-  return context;
 }

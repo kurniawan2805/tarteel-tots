@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AudioLoopEngine, playChime } from '../utils/audioEngine';
 
-export default function AudioPlayer({ ayahQueue, qari = 'ar.alafasy', loopsPerAyah = 5, onAyahComplete, onQueueComplete }) {
+export default function AudioPlayer({ ayahQueue, loopsPerAyah = 5, onAyahComplete, onQueueComplete }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [currentAyahIndex, setCurrentAyahIndex] = useState(0);

@@ -222,7 +222,11 @@ export class AudioLoopEngine {
       this.retryTimeout = null;
     }
     this.audio.pause();
-    try { this.audio.currentTime = 0; } catch (e) {}
+    try { 
+      this.audio.currentTime = 0; 
+    } catch (err) {
+      console.warn('Could not reset audio current time:', err);
+    }
     this.isPlaying = false;
     this.isPaused = false;
     this.loopCount = 0;
@@ -249,7 +253,7 @@ export async function cacheAudio(surah, ayah, qari = 'ar.alafasy') {
     const response = await fetch(url);
     const blob = await response.blob();
     return { url, blob, success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 }

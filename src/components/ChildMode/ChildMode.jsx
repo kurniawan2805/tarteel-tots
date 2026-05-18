@@ -97,12 +97,22 @@ export default function ChildMode({
     }
   };
 
-  const handleLoopToggle = () => {
+  const handleLoopToggle = async () => {
     const targets = [3, 5, 10, 20];
     const currentIndex = targets.indexOf(loopTarget);
     const nextTarget = targets[(currentIndex + 1) % targets.length];
+    
+    // Stop current play and reset loop count
+    engine.current.stop();
+    setIsPlaying(false);
+    
+    // Update target
     setLoopTarget(nextTarget);
     engine.current.setLoops(nextTarget);
+    
+    // Auto-play with new target
+    await engine.current.playCurrent();
+    setIsPlaying(true);
   };
 
   const handleChildTap = () => {

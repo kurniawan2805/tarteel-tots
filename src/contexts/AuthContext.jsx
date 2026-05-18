@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../db/supabase';
 import { initLocalDB } from '../db/dexie';
-
-const AuthContext = createContext(null);
+import { AuthContext } from './AuthContextInstance';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -45,27 +44,40 @@ export function AuthProvider({ children }) {
   }, [loadProfile]);
 
   useEffect(() => {
-    initLocalDB();
-    checkLocalSession();
+    let mounted = true;
+    
+    async function init() {
+      await initLocalDB();
+      if (mounted) {
+        await checkLocalSession();
+      }
+    }
+    
+    init();
 
     if (!supabase) {
       return;
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        // Background load profile
-        loadProfile(session.user.id);
-        setIsLocalMode(false);
-      } else {
-        setUser(null);
-        setProfile(null);
-        setFamilyId(null);
+      if (mounted) {
+        if (session?.user) {
+          setUser(session.user);
+          // Background load profile
+          loadProfile(session.user.id);
+          setIsLocalMode(false);
+        } else {
+          setUser(null);
+          setProfile(null);
+          setFamilyId(null);
+        }
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [checkLocalSession, loadProfile]);
 
   async function loginWithEmail(email, password) {
@@ -146,10 +158,4 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
-  return context;
 }

@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
-import { useAuth } from '../../contexts/AuthContext';
-import { useSync } from '../../contexts/SyncContext';
+import { useAuth } from '../../hooks/useAuth';
+import { useSync } from '../../hooks/useSync';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { logout, isLocalMode } = useAuth();
+  const { isLocalMode } = useAuth();
   const { performSync, online, lastSync } = useSync();
 
   const settings = useLiveQuery(async () => {

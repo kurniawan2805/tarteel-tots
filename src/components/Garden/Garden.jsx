@@ -46,7 +46,7 @@ export default function Garden({ streak = 0, size = 'md' }) {
 
 export function GardenProgress({ streak, goal = 30 }) {
   const percentage = Math.min((streak / goal) * 100, 100);
-  const { stage, label } = getGardenStage(streak);
+  const { label } = getGardenStage(streak);
 
   const milestones = [
     { at: 0, label: 'Start' },

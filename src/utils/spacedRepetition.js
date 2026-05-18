@@ -4,12 +4,6 @@ const GRADE_INTERVALS = {
   perfect: 7
 };
 
-const GRADE_WEIGHTS = {
-  needs_help: 3,
-  good: 1,
-  perfect: 0.5
-};
-
 export function calculateNextReview(grade, currentInterval = 1) {
   const baseInterval = GRADE_INTERVALS[grade] || 1;
   if (grade === 'perfect') {
