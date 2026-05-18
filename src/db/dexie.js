@@ -2,11 +2,12 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('TarteelTotsDB');
 
-db.version(3).stores({
+db.version(4).stores({
   profiles: '++id, family_id, email, role, created_at',
   children: '++id, family_id, name, age, created_at',
   progress: '++id, child_id, surah, chunkId, level, lastReviewed, nextSuggested, lastGrade, favorite, created_at, synced',
   sessions: '++id, child_id, family_id, date, duration, mode, type, screen_time, audio_only_time, ayahs_reviewed, ayahs_new, created_at, synced',
+  events: 'id, type, family_id, child_id, client_timestamp, synced',
   audio_cache: 'key, last_used',
   settings: 'key, value'
 });
@@ -35,5 +36,6 @@ export async function clearLocalData() {
 db.exportLocalData = async () => {
   const progress = await db.progress.where('synced').equals(0).toArray();
   const sessions = await db.sessions.where('synced').equals(0).toArray();
-  return { progress, sessions };
+  const events = await db.events.where('synced').equals(0).toArray();
+  return { progress, sessions, events };
 };

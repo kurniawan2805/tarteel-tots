@@ -35,6 +35,23 @@ export async function syncToCloud(localData) {
 
     const unsyncedProgress = localData.progress.filter(p => !p.synced);
     const unsyncedSessions = localData.sessions.filter(s => !s.synced);
+    const unsyncedEvents = localData.events.filter(e => !e.synced);
+
+    if (unsyncedEvents.length > 0) {
+      const { error } = await supabase
+        .from('events')
+        .upsert(unsyncedEvents.map(e => ({
+          id: e.id,
+          family_id: e.family_id,
+          parent_id: e.parent_id,
+          child_id: e.child_id,
+          type: e.type,
+          payload: e.payload,
+          client_timestamp: e.client_timestamp,
+          created_at: e.created_at
+        })));
+      if (error) throw error;
+    }
 
     if (unsyncedProgress.length > 0) {
       const { error } = await supabase
@@ -86,16 +103,19 @@ export async function pullFromCloud(familyId) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, reason: 'no_session' };
 
-    const [childrenRes, sessionsRes] = await Promise.all([
+    const [childrenRes, sessionsRes, eventsRes] = await Promise.all([
       supabase.from('children').select('*').eq('family_id', familyId),
-      supabase.from('sessions').select('*').eq('family_id', familyId)
+      supabase.from('sessions').select('*').eq('family_id', familyId),
+      supabase.from('events').select('*').eq('family_id', familyId)
     ]);
 
     if (childrenRes.error) throw childrenRes.error;
     if (sessionsRes.error) throw sessionsRes.error;
+    if (eventsRes.error) throw eventsRes.error;
 
     const children = childrenRes.data || [];
     const sessions = sessionsRes.data || [];
+    const events = eventsRes.data || [];
 
     let progress = [];
     if (children.length > 0) {
@@ -113,7 +133,8 @@ export async function pullFromCloud(familyId) {
       success: true,
       children,
       progress,
-      sessions
+      sessions,
+      events
     };
   } catch (error) {
     console.error('Pull error:', error);
@@ -129,6 +150,19 @@ export function subscribeToProgress(childId, callback) {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'progress', filter: `child_id=eq.${childId}` },
+      callback
+    )
+    .subscribe();
+}
+
+export function subscribeToFamilyEvents(familyId, callback) {
+  if (!supabaseUrl) return null;
+
+  return supabase
+    .channel(`family_events:${familyId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'events', filter: `family_id=eq.${familyId}` },
       callback
     )
     .subscribe();
