@@ -16,11 +16,13 @@ export default function SettingsPage() {
   }, []);
 
   const [screenTimeLimit, setScreenTimeLimit] = useState(settings?.screen_time_limit || 15);
+  const [memorizeTapTarget, setMemorizeTapTarget] = useState(settings?.memorize_tap_target || 10);
   const [defaultQari, setDefaultQari] = useState(settings?.default_qari || 'ar.alafasy');
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
     await db.settings.put({ key: 'screen_time_limit', value: screenTimeLimit });
+    await db.settings.put({ key: 'memorize_tap_target', value: memorizeTapTarget });
     await db.settings.put({ key: 'default_qari', value: defaultQari });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -67,6 +69,29 @@ export default function SettingsPage() {
               <span>5m</span>
               <span className="font-bold text-primary">{screenTimeLimit}m</span>
               <span>30m</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="text-lg font-bold text-text mb-4">Memorization</h2>
+          <div>
+            <label className="block text-sm font-semibold text-text mb-2">
+              Daily repetition goal (taps)
+            </label>
+            <input
+              type="range"
+              min="5"
+              max="30"
+              step="1"
+              value={memorizeTapTarget}
+              onChange={(e) => setMemorizeTapTarget(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-text-muted mt-1">
+              <span>5</span>
+              <span className="font-bold text-primary">{memorizeTapTarget}x</span>
+              <span>30</span>
             </div>
           </div>
         </div>

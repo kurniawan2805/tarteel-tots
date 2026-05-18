@@ -1,18 +1,20 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AudioLoopEngine, playChime, playWordAudio } from '../../utils/audioEngine';
 import { useScreenTime } from '../../hooks/useScreenTime';
 
 export default function ChildMode({ 
   ayahQueue, 
-  loopsPerAyah = 5, 
+  loopsPerAyah = 5,
+  memorizeTarget = 10,
   screenTimeLimit = 15,
   onSessionComplete 
 }) {
+  const [phase, setPhase] = useState('listen'); // 'listen' | 'memorize' | 'review'
   const [currentAyahIndex, setCurrentAyahIndex] = useState(0);
-  const [loopProgress] = useState(0);
+  const [loopTarget, setLoopTarget] = useState(loopsPerAyah);
   const [tapCount, setTapCount] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const engine = useMemo(() => new AudioLoopEngine(), []);
+  const engine = useRef(new AudioLoopEngine());
   const { screenTimeFormatted, isDimmed, warningShown, start, stop } = useScreenTime(screenTimeLimit);
 
   useEffect(() => {
@@ -21,51 +23,91 @@ export default function ChildMode({
   }, [start, stop]);
 
   useEffect(() => {
+    const currentEngine = engine.current;
     if (ayahQueue?.length > 0) {
-      engine.setQueue(ayahQueue, loopsPerAyah);
+      currentEngine.updateQueue(ayahQueue);
+      currentEngine.setCurrentIndex(currentAyahIndex);
+      currentEngine.setLoops(loopTarget);
+      currentEngine.stopAfterAyah = true;
     }
 
-    engine.onAyahComplete = () => {
+    currentEngine.onAyahComplete = () => {
       playChime('success');
-      setCurrentAyahIndex(prev => prev + 1);
+      setIsPlaying(false);
     };
 
-    engine.onQueueComplete = () => {
+    currentEngine.onQueueComplete = () => {
       setIsPlaying(false);
-      onSessionComplete?.();
     };
 
     return () => {
-      engine.onAyahComplete = null;
-      engine.onQueueComplete = null;
-      engine.stop();
+      currentEngine.onAyahComplete = null;
+      currentEngine.onQueueComplete = null;
+      currentEngine.stop();
     };
-  }, [ayahQueue, loopsPerAyah, engine, onSessionComplete]);
+  }, [ayahQueue, loopTarget, currentAyahIndex, onSessionComplete]);
 
   const currentAyah = ayahQueue?.[currentAyahIndex];
 
   const handlePlay = async () => {
-    await engine.playCurrent();
+    await engine.current.playCurrent();
     setIsPlaying(true);
   };
 
   const handlePause = () => {
-    engine.pause();
+    engine.current.pause();
     setIsPlaying(false);
   };
 
   const handleStop = () => {
-    engine.stop();
+    engine.current.stop();
     setIsPlaying(false);
   };
 
   const handleExit = () => {
-    engine.stop();
+    engine.current.stop();
     onSessionComplete?.();
   };
 
+  const handleNextPhase = () => {
+    engine.current.stop();
+    setIsPlaying(false);
+    if (phase === 'listen') {
+      setPhase('memorize');
+      setTapCount(0);
+    } else if (phase === 'memorize') {
+      if (currentAyahIndex === 0) {
+        // First ayah done, go to next ayah's listen phase
+        moveToNextAyah();
+      } else {
+        setPhase('review');
+      }
+    } else if (phase === 'review') {
+      moveToNextAyah();
+    }
+  };
+
+  const moveToNextAyah = () => {
+    if (currentAyahIndex >= ayahQueue.length - 1) {
+      onSessionComplete?.();
+    } else {
+      setCurrentAyahIndex(prev => prev + 1);
+      setPhase('listen');
+      setTapCount(0);
+    }
+  };
+
+  const handleLoopToggle = () => {
+    const targets = [3, 5, 10, 20];
+    const currentIndex = targets.indexOf(loopTarget);
+    const nextTarget = targets[(currentIndex + 1) % targets.length];
+    setLoopTarget(nextTarget);
+    engine.current.setLoops(nextTarget);
+  };
+
   const handleChildTap = () => {
-    setTapCount(prev => prev + 1);
+    const newCount = tapCount + 1;
+    setTapCount(newCount);
     playChime('tap');
   };
 
@@ -75,8 +117,17 @@ export default function ChildMode({
     }
   };
 
+  const handlePlayFullAyah = (ayah) => {
+    // Fallback play if engine doesn't expose it or just use a new Audio
+    import('../../utils/audioEngine').then(({ getAudioUrl }) => {
+      const audioUrl = getAudioUrl(ayah.surah, ayah.ayah_number, ayah.qari);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    });
+  };
+
   const progressPercentage = ayahQueue?.length > 0
-    ? ((currentAyahIndex + loopProgress / loopsPerAyah) / ayahQueue.length) * 100
+    ? (currentAyahIndex / ayahQueue.length) * 100
     : 0;
 
   if (isDimmed) {
@@ -117,88 +168,153 @@ export default function ChildMode({
         ✕
       </button>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="mb-8 text-center">
-          {currentAyah?.text ? (
-            <div className="arabic-text text-5xl text-text flex flex-wrap justify-center gap-x-4 gap-y-2 mb-2" dir="rtl">
-              {currentAyah.text.split(' ').map((word, index) => (
-                <span 
-                  key={index}
-                  onClick={() => handleWordClick(index)}
-                  className="cursor-pointer hover:text-primary transition-colors active:scale-110 transform"
-                >
-                  {word}
+      {/* Progress Bar */}
+      <div className="absolute top-0 left-0 h-1.5 bg-primary transition-all duration-500 z-10" style={{ width: `${progressPercentage}%` }} />
+
+      <div className="flex-1 flex flex-col items-center p-6 mt-12 overflow-y-auto pb-12">
+        {phase !== 'review' && (
+          <div className="mb-8 text-center w-full">
+            <h2 className="text-primary font-bold mb-4 uppercase tracking-widest text-sm">
+              Phase: {phase === 'listen' ? '👂 Hearing & Reading' : '📖 Memorizing'}
+            </h2>
+            {currentAyah?.text ? (
+              <div className="arabic-text text-5xl text-text flex flex-wrap justify-center gap-x-4 gap-y-4 mb-2 leading-relaxed" dir="rtl">
+                {currentAyah.text.split(' ').map((word, index) => (
+                  <span 
+                    key={index}
+                    onClick={() => handleWordClick(index)}
+                    className="cursor-pointer hover:text-primary transition-colors active:scale-110 transform"
+                  >
+                    {word}
+                  </span>
+                ))}
+                <span className="ayah-number whitespace-nowrap">
+                  ۝{currentAyah.ayah_number}
                 </span>
-              ))}
-              <span className="ayah-number">
-                ۝{currentAyah.ayah_number}
-              </span>
-            </div>
-          ) : (
-            <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-primary bg-opacity-20 animate-pulse-gentle flex items-center justify-center">
-              <span className="text-6xl">🎵</span>
-            </div>
-          )}
-          <p className="text-text-muted text-sm">
-            {currentAyah?.surah_name || `Surah ${currentAyah?.surah}`} : Ayah {currentAyah?.ayah_number}
-          </p>
-        </div>
-
-        <div className="relative mb-8">
-          <svg className="w-48 h-48" viewBox="0 0 120 120">
-            <circle
-              cx="60" cy="60" r="54"
-              fill="none"
-              stroke="#E5E7EB"
-              strokeWidth="8"
-            />
-            <circle
-              cx="60" cy="60" r="54"
-              fill="none"
-              stroke="#48C78E"
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={`${progressPercentage * 3.39} 339`}
-              transform="rotate(-90 60 60)"
-              className="transition-all duration-300"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-3xl font-bold text-text">{tapCount}</span>
-            <span className="text-xs text-text-muted">taps</span>
+              </div>
+            ) : (
+              <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-primary bg-opacity-20 animate-pulse-gentle flex items-center justify-center">
+                <span className="text-6xl">🎵</span>
+              </div>
+            )}
+            <p className="text-text-muted text-sm mt-4">
+              {currentAyah?.surah_name || `Surah ${currentAyah?.surah}`} : Ayah {currentAyah?.ayah_number}
+            </p>
           </div>
-        </div>
+        )}
 
-        <button
-          onClick={handleChildTap}
-          className="w-full max-w-xs h-20 rounded-2xl bg-gold text-text font-bold text-xl shadow-lg active:scale-95 transition-transform mb-6"
-        >
-          I said it! 👆
-        </button>
+        {phase === 'listen' && (
+          <div className="flex flex-col items-center gap-8 w-full">
+            <div className="flex items-center gap-6">
+              <button
+                onClick={handleLoopToggle}
+                className="px-6 py-3 rounded-xl bg-white border-2 border-primary text-primary font-bold shadow-sm active:scale-95 transition-transform"
+              >
+                🔁 {loopTarget}x
+              </button>
+              
+              <div className="flex gap-4">
+                <button
+                  onClick={isPlaying ? handlePause : handlePlay}
+                  className="w-20 h-20 rounded-full bg-primary text-white text-3xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
+                >
+                  {isPlaying ? '⏸' : '▶'}
+                </button>
+                <button
+                  onClick={handleStop}
+                  className="w-20 h-20 rounded-full bg-bg-dark text-text-muted text-2xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
+                >
+                  ⏹
+                </button>
+              </div>
+            </div>
 
-        <div className="flex gap-4">
-          <button
-            onClick={isPlaying ? handlePause : handlePlay}
-            className="w-20 h-20 rounded-full bg-primary text-white text-3xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
-          <button
-            onClick={handleStop}
-            className="w-20 h-20 rounded-full bg-bg-dark text-text-muted text-2xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
-          >
-            ⏹
-          </button>
-          <button
-            onClick={() => {
-              engine.skipToNext();
-              setCurrentAyahIndex(prev => prev + 1);
-            }}
-            className="w-20 h-20 rounded-full bg-review text-white text-2xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
-          >
-            ⏭
-          </button>
-        </div>
+            <button
+              onClick={handleNextPhase}
+              className="w-full max-w-xs py-4 rounded-2xl bg-secondary text-white font-bold text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
+            >
+              Next: Memorize ➔
+            </button>
+          </div>
+        )}
+
+        {phase === 'memorize' && (
+          <div className="flex flex-col items-center gap-8 w-full">
+            <div className="relative">
+              <button
+                onClick={handleChildTap}
+                className="w-48 h-48 rounded-full bg-gold text-text shadow-xl active:scale-90 transition-all flex flex-col items-center justify-center border-8 border-white"
+              >
+                <span className="text-5xl font-bold">{tapCount}</span>
+                <span className="text-lg opacity-60">/ {memorizeTarget}</span>
+                <span className="text-sm font-bold mt-2 uppercase tracking-tighter">I said it!</span>
+              </button>
+              {tapCount >= memorizeTarget && (
+                <div className="absolute -top-2 -right-2 bg-success text-white w-10 h-10 rounded-full flex items-center justify-center text-xl animate-bounce">
+                  ✓
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleNextPhase}
+              disabled={tapCount < memorizeTarget}
+              className={`w-full max-w-xs py-4 rounded-2xl font-bold text-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                tapCount >= memorizeTarget ? 'bg-primary text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {currentAyahIndex === 0 ? 'Next Ayah ➔' : 'Review Progress ➔'}
+            </button>
+            
+            <button 
+              onClick={() => handlePlayFullAyah(currentAyah)}
+              className="text-primary font-semibold text-sm underline opacity-60"
+            >
+              I forgot... play again
+            </button>
+          </div>
+        )}
+
+        {phase === 'review' && (
+          <div className="w-full max-w-lg flex flex-col">
+            <h2 className="text-2xl font-bold text-text mb-6 text-center">🌟 Session Progress</h2>
+            <div className="space-y-6 px-2">
+              {ayahQueue.slice(Math.max(0, currentAyahIndex - 4), currentAyahIndex + 1).map((ayah, i) => (
+                <div key={i} className={`p-4 rounded-2xl bg-white shadow-sm border-l-4 ${ayah === currentAyah ? 'border-primary' : 'border-gold opacity-70'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-text-muted">
+                      {ayah.surah_name} : {ayah.ayah_number}
+                    </span>
+                    <button 
+                      onClick={() => handlePlayFullAyah(ayah)}
+                      className="w-8 h-8 rounded-full bg-primary bg-opacity-10 text-primary flex items-center justify-center"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                  <div className="arabic-text text-2xl text-text text-right leading-relaxed" dir="rtl">
+                    {ayah.text.split(' ').map((word, idx) => (
+                      <span 
+                        key={idx}
+                        onClick={() => playWordAudio(ayah.surah, ayah.ayah_number, idx + 1)}
+                        className="cursor-pointer hover:text-primary transition-colors"
+                      >
+                        {word}{' '}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <button
+              onClick={handleNextPhase}
+              className="w-full mt-6 py-4 rounded-2xl bg-primary text-white font-bold text-xl shadow-lg active:scale-95 transition-transform"
+            >
+              Section Complete! Next ➔
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="p-4 text-center">

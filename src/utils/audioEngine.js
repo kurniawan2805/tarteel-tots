@@ -1,12 +1,6 @@
 const QARI_BASE_URL = 'https://cdn.islamic.network/quran/audio/128';
 const WORDS_AUDIO_URL = 'https://audios.quranwbw.com/words';
 
-const QARI_MAP = {
-  'ar.alafasy': 'Alafasy',
-  'ar.minshawi': 'Minshawi',
-  'ar.husary': 'Husary'
-};
-
 let audioContext = null;
 
 function getAudioContext() {
@@ -105,6 +99,7 @@ export class AudioLoopEngine {
     this.isAyahEnding = false;
     this.isPlayingCurrent = false;
     this.retryTimeout = null;
+    this.stopAfterAyah = false;
 
     // Bind handlers for consistent `this`
     this.audio.onended = () => this.onAyahEnded();
@@ -120,6 +115,21 @@ export class AudioLoopEngine {
     this.maxLoops = loopsPerAyah;
     this.currentIndex = 0;
     this.loopCount = 0;
+  }
+
+  updateQueue(queue) {
+    this.currentQueue = queue;
+  }
+
+  setLoops(count) {
+    this.maxLoops = count;
+  }
+
+  setCurrentIndex(index) {
+    if (this.currentIndex !== index) {
+      this.currentIndex = index;
+      this.loopCount = 0;
+    }
   }
 
   async playCurrent() {
@@ -173,6 +183,12 @@ export class AudioLoopEngine {
       this.loopCount = 0;
       this.currentIndex++;
       this.onAyahComplete?.(this.currentQueue[this.currentIndex - 1]);
+      
+      if (this.stopAfterAyah) {
+        this.stop();
+        this.isAyahEnding = false;
+        return;
+      }
     }
 
     if (this.currentIndex >= this.currentQueue.length) {
@@ -224,10 +240,6 @@ export class AudioLoopEngine {
       this.stop();
       this.onQueueComplete?.();
     }
-  }
-
-  setLoops(count) {
-    this.maxLoops = count;
   }
 }
 

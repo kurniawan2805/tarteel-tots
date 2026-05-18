@@ -13,6 +13,10 @@ export default function ChildPlayPage() {
   const { saveSession, saveProgress } = useSync();
 
   const child = useLiveQuery(() => db.children.get(parseInt(childId)), [childId]);
+  const lastSession = useLiveQuery(
+    () => db.sessions.where('child_id').equals(parseInt(childId)).reverse().first(),
+    [childId]
+  );
   const progress = useLiveQuery(() => db.progress.where('child_id').equals(parseInt(childId)).toArray(), [childId]);
   const settings = useLiveQuery(async () => {
     const items = await db.settings.toArray();
@@ -23,8 +27,8 @@ export default function ChildPlayPage() {
   const [sessionStartTime, setSessionStartTime] = useState(null);
   const [ayahQueue, setAyahQueue] = useState([]);
 
-  const { queue: baseQueue, nextBaseline } = useMemo(() => {
-    if (!child || !settings || !progress) return { queue: [], nextBaseline: null };
+  const { queue: baseQueue, nextBaseline, preview } = useMemo(() => {
+    if (!child || !settings || !progress) return { queue: [], nextBaseline: null, preview: null };
     
     const baseline = child.memorization_baseline || {};
     let currentSurah = baseline.current_surah || 1;
@@ -72,7 +76,12 @@ export default function ChildPlayPage() {
 
     return {
       queue: [...reviewQueue, ...queue],
-      nextBaseline: { current_surah: currentSurah, current_ayah: currentAyah }
+      nextBaseline: { current_surah: currentSurah, current_ayah: currentAyah },
+      preview: {
+        newAyahsCount: queue.length,
+        reviewAyahsCount: reviewQueue.length,
+        startAyah: queue[0] ? `${queue[0].surah_name} ${queue[0].ayah_number}` : 'End'
+      }
     };
   }, [child, progress, settings]);
 
@@ -103,7 +112,9 @@ export default function ChildPlayPage() {
       duration,
       mode: 'interactive',
       screen_time: duration,
-      audio_only_time: 0
+      audio_only_time: 0,
+      ayahs_new: ayahQueue.filter(item => item.isNew).length,
+      ayahs_reviewed: ayahQueue.filter(item => !item.isNew).length
     });
 
     // 2. Save Progress for new ayahs
@@ -144,10 +155,38 @@ export default function ChildPlayPage() {
 
   if (!sessionStarted) {
     return (
-      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6">
-        <span className="text-7xl mb-6 block">{child.avatar}</span>
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
+        <span className="text-7xl mb-4 block">{child.avatar}</span>
         <h1 className="text-3xl font-bold text-text mb-2">{child.name}'s Session</h1>
-        <p className="text-text-muted mb-8">Ready to learn?</p>
+        
+        <div className="w-full max-w-sm grid grid-cols-2 gap-4 mb-8">
+          <div className="card p-4 text-left">
+            <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Previous</h3>
+            {lastSession ? (
+              <>
+                <p className="text-sm font-bold text-text">{new Date(lastSession.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                <p className="text-xs text-text-muted">{Math.round(lastSession.duration / 60)} min session</p>
+                <p className="text-xs text-primary font-bold mt-1">+{lastSession.ayahs_new || 0} ayahs</p>
+              </>
+            ) : (
+              <p className="text-xs text-text-muted italic">No sessions yet</p>
+            )}
+          </div>
+
+          <div className="card p-4 text-left">
+            <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Next Up</h3>
+            {preview ? (
+              <>
+                <p className="text-sm font-bold text-text">{preview.startAyah}</p>
+                <p className="text-xs text-text-muted">{preview.newAyahsCount} new, {preview.reviewAyahsCount} review</p>
+                <p className="text-xs text-secondary font-bold mt-1">Ready to start</p>
+              </>
+            ) : (
+              <p className="text-xs text-text-muted italic">Calculating...</p>
+            )}
+          </div>
+        </div>
+
         <button
           onClick={() => {
             setSessionStarted(true);
@@ -157,6 +196,7 @@ export default function ChildPlayPage() {
         >
           ▶
         </button>
+        <p className="text-text-muted mt-6 font-medium">Tap to start learning</p>
       </div>
     );
   }
@@ -165,6 +205,7 @@ export default function ChildPlayPage() {
     <ChildMode
       ayahQueue={ayahQueue}
       loopsPerAyah={5}
+      memorizeTarget={settings.memorize_tap_target || 10}
       screenTimeLimit={settings.screen_time_limit}
       onSessionComplete={handleSessionComplete}
     />

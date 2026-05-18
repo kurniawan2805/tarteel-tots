@@ -9,6 +9,9 @@
   --color-gold-light: #F7DE8F;
   --color-bg: #FDFBF7;
   --color-bg-dark: #F5F1E8;
+  --color-secondary: #5ABCB9;
+  --color-secondary-dark: #4AA8A5;
+  --color-secondary-light: #7DD1CE;
   --color-review: #5ABCB9;
   --color-review-dark: #4AA8A5;
   --color-review-light: #7DD1CE;
@@ -23,7 +26,7 @@
   --color-night-sky-light: #2A2A4E;
 
   --font-family-sans: 'Nunito', system-ui, -apple-system, sans-serif;
-  --font-family-arabic: 'KFGQPC Uthman Taha Naskh', 'Amiri', 'Noto Naskh Arabic', 'Scheherazade New', 'Lateef', 'Traditional Arabic', serif;
+  --font-family-arabic: 'Amiri', 'Noto Naskh Arabic', 'Scheherazade New', 'Lateef', 'Traditional Arabic', serif;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -62,12 +65,12 @@ body {
   font-family: var(--font-family-arabic);
   line-height: 2.5;
   direction: rtl;
-  font-feature-settings: "sche" 1, "lig" 1;
+  font-feature-settings: "sche" 1, "lig" 1, "calt" 1;
 }
 
 .ayah-number {
   font-family: var(--font-family-arabic);
-  font-feature-settings: "cv01" 1;
+  font-feature-settings: "cv01" 1, "calt" 1;
   color: var(--color-primary);
   margin: 0 4px;
   font-size: 0.8em;

@@ -17,6 +17,7 @@ export async function initLocalDB() {
     await db.settings.bulkAdd([
       { key: 'screen_time_limit', value: 15 },
       { key: 'default_qari', value: 'ar.alafasy' },
+      { key: 'memorize_tap_target', value: 10 },
       { key: 'child_mode_pin', value: null },
       { key: 'onboarding_complete', value: false }
     ]);

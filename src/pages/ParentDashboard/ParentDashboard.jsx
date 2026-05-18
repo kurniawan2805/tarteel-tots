@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { useNavigate } from 'react-router-dom';
@@ -7,7 +7,7 @@ import { useSync } from '../../contexts/SyncContext';
 import { getStreakDays, getGardenStage } from '../../utils/spacedRepetition';
 import Garden, { GardenProgress } from '../../components/Garden/Garden';
 import { quranMetaData } from '../../data/quranMeta';
-import { fetchAyahText } from '../../utils/quranApi';
+import { fetchAyahText, fetchSurahText } from '../../utils/quranApi';
 
 const QARI_NAMES = {
   'ar.alafasy': 'Mishary Alafasy',
@@ -31,7 +31,69 @@ export default function ParentDashboard() {
   const [selectedChild, setSelectedChild] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [isAddingManual, setIsAddingManual] = useState(false);
-  const [manualEntry, setManualEntry] = useState({ surah: 1, ayah: 1 });
+  const [manualAddMode, setManualAddMode] = useState('single'); // 'single', 'range', 'surah'
+  const [manualEntry, setManualEntry] = useState({ surah: 1, ayah: 1, endAyah: 1 });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [recentSurahs, setRecentSurahs] = useState(() => {
+    const saved = localStorage.getItem('recent_surahs');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const updateRecentSurahs = (surahId) => {
+    const updated = [surahId, ...recentSurahs.filter(id => id !== surahId)].slice(0, 5);
+    setRecentSurahs(updated);
+    localStorage.setItem('recent_surahs', JSON.stringify(updated));
+  };
+
+  const groupedProgress = useMemo(() => {
+    if (!selectedChild || !progress) return [];
+
+    const childProgress = progress.filter(p => p.child_id === selectedChild.id);
+    
+    // 1. Group by Date
+    const byDate = {};
+    childProgress.forEach(p => {
+      const dateKey = p.last_review ? new Date(p.last_review).toLocaleDateString() : 'Unknown';
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(p);
+    });
+
+    const result = Object.entries(byDate).map(([date, items]) => {
+      // 2. Group by Surah within each date
+      const bySurah = {};
+      items.forEach(p => {
+        if (!bySurah[p.surah]) bySurah[p.surah] = [];
+        bySurah[p.surah].push(p);
+      });
+
+      const surahGroups = Object.entries(bySurah).map(([surahId, ayahs]) => {
+        const sorted = ayahs.sort((a, b) => a.ayah_number - b.ayah_number);
+        const ranges = [];
+        let currentRange = null;
+
+        sorted.forEach(a => {
+          if (!currentRange) {
+            currentRange = { surah: a.surah, surah_name: a.surah_name, start: a.ayah_number, end: a.ayah_number, grade: a.grade };
+          } else if (a.ayah_number === currentRange.end + 1) {
+            currentRange.end = a.ayah_number;
+            // Aggregate grade: if any is 'needs_help', overall is 'needs_help'
+            if (a.grade === 'needs_help') currentRange.grade = 'needs_help';
+            else if (a.grade === 'good' && currentRange.grade === 'perfect') currentRange.grade = 'good';
+          } else {
+            ranges.push(currentRange);
+            currentRange = { surah: a.surah, surah_name: a.surah_name, start: a.ayah_number, end: a.ayah_number, grade: a.grade };
+          }
+        });
+        if (currentRange) ranges.push(currentRange);
+
+        return { surahId, ranges };
+      });
+
+      return { date, surahGroups };
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return result;
+  }, [progress, selectedChild]);
 
   useEffect(() => {
     if (children?.length > 0 && !selectedChild) {
@@ -60,20 +122,49 @@ export default function ParentDashboard() {
   const handleManualAdd = async () => {
     if (!selectedChild) return;
     
-    const text = await fetchAyahText(manualEntry.surah, manualEntry.ayah);
-    await saveProgress({
-      child_id: selectedChild.id,
-      surah: manualEntry.surah,
-      surah_name: quranMetaData[manualEntry.surah].transliteration,
-      ayah_number: manualEntry.ayah,
-      ayah_text: text,
-      grade: 'perfect',
-      next_review: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      last_review: new Date().toISOString(),
-      repetition_count: 1
-    });
+    let ayahsToAdd = [];
+    
+    if (manualAddMode === 'single') {
+      const text = await fetchAyahText(manualEntry.surah, manualEntry.ayah);
+      if (text) ayahsToAdd.push({ surah: manualEntry.surah, ayah: manualEntry.ayah, text });
+    } else if (manualAddMode === 'range') {
+      const surahData = await fetchSurahText(manualEntry.surah);
+      if (surahData) {
+        const start = Math.min(manualEntry.ayah, manualEntry.endAyah);
+        const end = Math.max(manualEntry.ayah, manualEntry.endAyah);
+        for (let i = start; i <= end; i++) {
+          const ayahData = surahData.find(a => a.numberInSurah === i);
+          if (ayahData) ayahsToAdd.push({ surah: manualEntry.surah, ayah: i, text: ayahData.text });
+        }
+      }
+    } else if (manualAddMode === 'surah') {
+      const surahData = await fetchSurahText(manualEntry.surah);
+      if (surahData) {
+        ayahsToAdd = surahData.map(a => ({ surah: manualEntry.surah, ayah: a.numberInSurah, text: a.text }));
+      }
+    }
+
+    const now = new Date().toISOString();
+    const nextReview = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    for (const item of ayahsToAdd) {
+      await saveProgress({
+        child_id: selectedChild.id,
+        surah: item.surah,
+        surah_name: quranMetaData[item.surah].transliteration,
+        ayah_number: item.ayah,
+        ayah_text: item.text,
+        grade: 'perfect',
+        next_review: nextReview,
+        last_review: now,
+        repetition_count: 1
+      });
+    }
+
+    updateRecentSurahs(manualEntry.surah);
     
     setIsAddingManual(false);
+    setManualAddMode('single');
   };
 
   return (
@@ -207,30 +298,167 @@ export default function ParentDashboard() {
 
             {isAddingManual && (
               <div className="bg-bg-dark p-4 rounded-xl mb-6 animate-grow">
-                <p className="text-xs font-bold text-text-muted uppercase mb-3 text-center">Add Memorized Ayah</p>
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <select
-                    value={manualEntry.surah}
-                    onChange={(e) => setManualEntry({ ...manualEntry, surah: parseInt(e.target.value), ayah: 1 })}
-                    className="input-field py-2 text-sm"
-                  >
-                    {quranMetaData.slice(1).map((s) => (
-                      <option key={s.id} value={s.id}>{s.id}. {s.transliteration}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={manualEntry.ayah}
-                    onChange={(e) => setManualEntry({ ...manualEntry, ayah: parseInt(e.target.value) })}
-                    className="input-field py-2 text-sm"
-                  >
-                    {Array.from({ length: quranMetaData[manualEntry.surah]?.verses || 0 }, (_, i) => i + 1).map((n) => (
-                      <option key={n} value={n}>Ayah {n}</option>
-                    ))}
-                  </select>
+                <p className="text-xs font-bold text-text-muted uppercase mb-4 text-center">Add Memorized Progress</p>
+                
+                {/* Mode Tabs */}
+                <div className="flex bg-white rounded-lg p-1 mb-4 shadow-inner">
+                  {['single', 'range', 'surah'].map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setManualAddMode(mode)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
+                        manualAddMode === mode ? 'bg-primary text-white shadow-sm' : 'text-text-muted'
+                      }`}
+                    >
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  ))}
                 </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-text-muted uppercase ml-1 mb-2">Select Surah</label>
+                    
+                    {/* Search Bar */}
+                    <div className="relative mb-3">
+                      <input
+                        type="text"
+                        placeholder="Search surah..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="input-field py-2 pl-9 text-sm"
+                      />
+                      <span className="absolute left-3 top-2.5 opacity-30">🔍</span>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto pr-1 space-y-4">
+                      {searchTerm ? (
+                        /* Search Results */
+                        <div className="grid grid-cols-2 gap-2">
+                          {quranMetaData.slice(1)
+                            .filter(s => 
+                              s.transliteration.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              s.id.toString() === searchTerm
+                            )
+                            .map(s => (
+                              <button
+                                key={s.id}
+                                onClick={() => {
+                                  setManualEntry({ ...manualEntry, surah: s.id, ayah: 1, endAyah: 1 });
+                                  setSearchTerm('');
+                                }}
+                                className={`p-2 text-xs rounded-lg border text-left transition-all ${
+                                  manualEntry.surah === s.id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
+                                }`}
+                              >
+                                {s.id}. {s.transliteration}
+                              </button>
+                            ))
+                          }
+                        </div>
+                      ) : (
+                        <>
+                          {/* Recent Section */}
+                          {recentSurahs.length > 0 && (
+                            <div>
+                              <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">Recent</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {recentSurahs.map(id => {
+                                  const s = quranMetaData[id];
+                                  return (
+                                    <button
+                                      key={id}
+                                      onClick={() => setManualEntry({ ...manualEntry, surah: id, ayah: 1, endAyah: 1 })}
+                                      className={`p-2 text-xs rounded-lg border text-left transition-all ${
+                                        manualEntry.surah === id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
+                                      }`}
+                                    >
+                                      {s.transliteration}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Juz Amma Section */}
+                          <div>
+                            <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">Juz Amma</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {quranMetaData.slice(78).map(s => (
+                                <button
+                                  key={s.id}
+                                  onClick={() => setManualEntry({ ...manualEntry, surah: s.id, ayah: 1, endAyah: 1 })}
+                                  className={`p-2 text-xs rounded-lg border text-left transition-all ${
+                                    manualEntry.surah === s.id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
+                                  }`}
+                                >
+                                  {s.transliteration}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* All Surahs Section */}
+                          <div>
+                            <p className="text-[9px] font-bold text-text-muted uppercase tracking-tighter mb-2">All Surahs</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {quranMetaData.slice(1, 78).map(s => (
+                                <button
+                                  key={s.id}
+                                  onClick={() => setManualEntry({ ...manualEntry, surah: s.id, ayah: 1, endAyah: 1 })}
+                                  className={`p-2 text-xs rounded-lg border text-left transition-all ${
+                                    manualEntry.surah === s.id ? 'bg-primary border-primary text-white font-bold' : 'bg-white border-gray-100 text-text'
+                                  }`}
+                                >
+                                  {s.id}. {s.transliteration}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {manualAddMode !== 'surah' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-text-muted uppercase ml-1 mb-1">
+                          {manualAddMode === 'single' ? 'Ayah' : 'Start Ayah'}
+                        </label>
+                        <select
+                          value={manualEntry.ayah}
+                          onChange={(e) => setManualEntry({ ...manualEntry, ayah: parseInt(e.target.value) })}
+                          className="input-field py-2 text-sm"
+                        >
+                          {Array.from({ length: quranMetaData[manualEntry.surah]?.verses || 0 }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>Ayah {n}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {manualAddMode === 'range' && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-text-muted uppercase ml-1 mb-1">End Ayah</label>
+                          <select
+                            value={manualEntry.endAyah}
+                            onChange={(e) => setManualEntry({ ...manualEntry, endAyah: parseInt(e.target.value) })}
+                            className="input-field py-2 text-sm"
+                          >
+                            {Array.from({ length: quranMetaData[manualEntry.surah]?.verses || 0 }, (_, i) => i + 1).map((n) => (
+                              <option key={n} value={n}>Ayah {n}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   onClick={handleManualAdd}
-                  className="btn-primary w-full py-2 text-sm"
+                  className="btn-primary w-full py-3 text-sm mt-6"
                 >
                   Confirm Entry
                 </button>
@@ -239,38 +467,49 @@ export default function ParentDashboard() {
 
             {selectedChild && (
               <>
-                <p className="text-sm text-text-muted mb-3">
+                <p className="text-sm text-text-muted mb-4">
                   {selectedChild.name}'s memorization progress
                 </p>
-                {progress?.filter(p => p.child_id === selectedChild.id)?.length === 0 ? (
+                {groupedProgress.length === 0 ? (
                   <p className="text-center text-text-muted py-8">No progress yet. Start a session!</p>
                 ) : (
-                  <div className="space-y-2">
-                    {progress
-                      ?.filter(p => p.child_id === selectedChild.id)
-                      ?.sort((a, b) => new Date(b.last_review) - new Date(a.last_review))
-                      ?.slice(0, 10)
-                      ?.map((p) => (
-                        <div key={p.id} className="flex items-center justify-between p-3 bg-bg-dark rounded-lg">
-                          <div>
-                            <p className="text-sm font-semibold text-text">
-                              {quranMetaData[p.surah]?.transliteration || `Surah ${p.surah}`} : Ayah {p.ayah_number}
-                            </p>
-                            <p className="text-xs text-text-muted">
-                              Last reviewed: {p.last_review ? new Date(p.last_review).toLocaleDateString() : 'Never'}
-                            </p>
-                          </div>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            p.grade === 'perfect' ? 'bg-success text-white' :
-                            p.grade === 'good' ? 'bg-warning text-white' :
-                            'bg-danger text-white'
-                          }`}>
-                            {p.grade === 'perfect' ? '🟢 Perfect' :
-                             p.grade === 'good' ? '🟡 Good' :
-                             '🔴 Needs Help'}
-                          </span>
+                  <div className="space-y-8">
+                    {groupedProgress.map((group) => (
+                      <div key={group.date}>
+                        <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-3 border-b border-bg-dark pb-1">
+                          {group.date}
+                        </h3>
+                        <div className="space-y-3">
+                          {group.surahGroups.map((surahGroup) => (
+                            <div key={surahGroup.surahId} className="space-y-2">
+                              {surahGroup.ranges.map((range, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-4 bg-bg-dark rounded-xl border border-white shadow-sm">
+                                  <div>
+                                    <p className="text-sm font-bold text-text">
+                                      {range.surah_name}
+                                    </p>
+                                    <p className="text-xs text-text-muted">
+                                      {range.start === range.end 
+                                        ? `Ayah ${range.start}` 
+                                        : `Ayahs ${range.start} – ${range.end}`}
+                                    </p>
+                                  </div>
+                                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold text-white shadow-sm ${
+                                    range.grade === 'perfect' ? 'bg-success' :
+                                    range.grade === 'good' ? 'bg-warning' :
+                                    'bg-danger'
+                                  }`}>
+                                    {range.grade === 'perfect' ? 'PERFECT' :
+                                     range.grade === 'good' ? 'GOOD' :
+                                     'NEEDS HELP'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                    ))}
                   </div>
                 )}
               </>
