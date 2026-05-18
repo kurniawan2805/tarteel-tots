@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../db/supabase';
 import { initLocalDB, db } from '../db/dexie';
 import { AuthContext } from './AuthContextInstance';
@@ -48,7 +48,6 @@ export function AuthProvider({ children }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setUser(session.user);
-      // Background load profile - don't await it to avoid blocking UI
       loadProfile(session.user.id);
     }
     setLoading(false);
@@ -59,10 +58,7 @@ export function AuthProvider({ children }) {
     
     async function init() {
       try {
-        console.log('Initializing local database...');
         await initLocalDB();
-        console.log('Local database ready.');
-        
         if (mounted) {
           await checkOnboarding();
           await checkLocalSession();
@@ -71,22 +67,19 @@ export function AuthProvider({ children }) {
         console.error('Initialization failed:', err);
         if (mounted) {
           setLoading(false);
-          setIsLocalMode(true); // Fallback to local mode
+          setIsLocalMode(true);
         }
       }
     }
     
     init();
 
-    if (!supabase) {
-      return;
-    }
+    if (!supabase) return;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (mounted) {
         if (session?.user) {
           setUser(session.user);
-          // Background load profile
           loadProfile(session.user.id);
           setIsLocalMode(false);
         } else {
@@ -103,14 +96,14 @@ export function AuthProvider({ children }) {
     };
   }, [checkLocalSession, loadProfile, checkOnboarding]);
 
-  async function loginWithEmail(email, password) {
+  const loginWithEmail = useCallback(async (email, password) => {
     if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
-  }
+  }, []);
 
-  async function signupWithEmail(email, password, fullName, role) {
+  const signupWithEmail = useCallback(async (email, password, fullName, role) => {
     if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
@@ -129,14 +122,12 @@ export function AuthProvider({ children }) {
         full_name: fullName,
         role
       });
-
       setFamilyId(familyData.id);
     }
-
     return data;
-  }
+  }, []);
 
-  async function joinFamily(email, password, familyCode) {
+  const joinFamily = useCallback(async (email, password, familyCode) => {
     if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -156,29 +147,32 @@ export function AuthProvider({ children }) {
       });
       setFamilyId(family.id);
     }
-
     return data;
-  }
+  }, []);
 
-  async function startLocalMode() {
+  const startLocalMode = useCallback(async () => {
     setIsLocalMode(true);
     setLoading(false);
-  }
+  }, []);
 
-  async function logout() {
-    await supabase.auth.signOut();
+  const logout = useCallback(async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setProfile(null);
     setFamilyId(null);
     setIsLocalMode(false);
-  }
+  }, []);
+
+  const authValue = useMemo(() => ({
+    user, profile, familyId, loading, isLocalMode, onboardingComplete,
+    loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout,
+    refreshOnboarding: checkOnboarding
+  }), [user, profile, familyId, loading, isLocalMode, onboardingComplete, loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout, checkOnboarding]);
 
   return (
-    <AuthContext.Provider value={{
-      user, profile, familyId, loading, isLocalMode, onboardingComplete,
-      loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout,
-      refreshOnboarding: checkOnboarding
-    }}>
+    <AuthContext.Provider value={authValue}>
       {children}
     </AuthContext.Provider>
   );

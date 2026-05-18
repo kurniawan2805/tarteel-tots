@@ -28,7 +28,7 @@ export default function OnboardingPage() {
   const [currentChild, setCurrentChild] = useState({
     name: '',
     age: 4,
-    avatar: '👧',
+    avatar: '☀️',
     learning_path: 'standard',
     current_surah: 1,
     current_ayah: 1,
@@ -69,7 +69,7 @@ export default function OnboardingPage() {
     setCurrentChild({
       name: '',
       age: 4,
-      avatar: '👧',
+      avatar: '☀️',
       learning_path: 'standard',
       current_surah: 1,
       current_ayah: 1,

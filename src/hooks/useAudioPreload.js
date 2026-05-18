@@ -62,7 +62,7 @@ export function useAudioPreload(ayahQueue, currentIndex) {
     return () => {
       mounted = false;
     };
-  }, [ayahQueue, currentIndex]);
+  }, [ayahQueue, currentIndex]); // Removed loadedKeys from deps as we use functional update and it's not needed for the sliding window logic
 
   const currentAyah = ayahQueue?.[currentIndex];
   const isCurrentReady = currentAyah 
