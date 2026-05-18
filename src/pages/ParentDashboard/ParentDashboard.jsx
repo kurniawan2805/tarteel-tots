@@ -67,46 +67,54 @@ export default function ParentDashboard() {
   };
 
   const groupedProgress = useMemo(() => {
-    if (!selectedChild || !progress) return [];
+    try {
+      if (!selectedChild || !progress) return [];
 
-    const childProgress = progress.filter(p => p.child_id === selectedChild.id);
-    
-    const byDate = {};
-    childProgress.forEach(p => {
-      const dateKey = p.lastReviewed ? new Date(p.lastReviewed).toLocaleDateString() : 'Unknown';
-      if (!byDate[dateKey]) byDate[dateKey] = [];
-      byDate[dateKey].push(p);
-    });
-
-    const result = Object.entries(byDate).map(([date, items]) => {
-      const bySurah = {};
-      items.forEach(p => {
-        if (!bySurah[p.surah]) bySurah[p.surah] = [];
-        bySurah[p.surah].push(p);
+      const childProgress = progress.filter(p => p.child_id === selectedChild.id);
+      
+      const byDate = {};
+      childProgress.forEach(p => {
+        const dateKey = p.lastReviewed ? new Date(p.lastReviewed).toLocaleDateString() : 'Unknown';
+        if (!byDate[dateKey]) byDate[dateKey] = [];
+        byDate[dateKey].push(p);
       });
 
-      const surahGroups = Object.entries(bySurah).map(([surahId, chunks]) => {
-        const surahMeta = quranMetaData[surahId];
-        const allChunks = getSurahChunks(parseInt(surahId), surahMeta?.verses || 7);
-        
-        const ranges = chunks.map(c => {
-          const chunkMeta = allChunks.find(ac => ac.id === c.chunkId);
-          return {
-            surah: c.surah,
-            surah_name: surahMeta?.transliteration || `Surah ${c.surah}`,
-            start: chunkMeta?.start || 1,
-            end: chunkMeta?.end || 1,
-            grade: c.lastGrade
-          };
-        }).sort((a, b) => a.start - b.start);
+      const result = Object.entries(byDate).map(([date, items]) => {
+        const bySurah = {};
+        items.forEach(p => {
+          if (p.surah) {
+            if (!bySurah[p.surah]) bySurah[p.surah] = [];
+            bySurah[p.surah].push(p);
+          }
+        });
 
-        return { surahId, ranges };
-      });
+        const surahGroups = Object.entries(bySurah).map(([surahId, chunks]) => {
+          const sId = parseInt(surahId);
+          const surahMeta = quranMetaData[sId];
+          const allChunks = getSurahChunks(sId, surahMeta?.verses || 7);
+          
+          const ranges = chunks.map(c => {
+            const chunkMeta = allChunks.find(ac => ac.id === c.chunkId);
+            return {
+              surah: c.surah,
+              surah_name: surahMeta?.transliteration || `Surah ${c.surah}`,
+              start: chunkMeta?.start || 1,
+              end: chunkMeta?.end || 1,
+              grade: c.lastGrade
+            };
+          }).sort((a, b) => (a.start || 0) - (b.start || 0));
 
-      return { date, surahGroups };
-    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+          return { surahId: sId, ranges };
+        });
 
-    return result;
+        return { date, surahGroups };
+      }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      return result;
+    } catch (err) {
+      console.error('Progress calculation failed:', err);
+      return [];
+    }
   }, [progress, selectedChild]);
 
   useEffect(() => {

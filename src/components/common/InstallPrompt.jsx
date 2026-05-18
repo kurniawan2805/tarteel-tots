@@ -1,16 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useInstallPrompt } from '../../hooks/useInstallPrompt';
 
 export default function InstallPrompt() {
   const { showPrompt, isInstalled, handleInstall, handleDismiss } = useInstallPrompt();
   const [dismissed, setDismissed] = useState(() => localStorage.getItem('pwaPromptDismissed') === 'true');
-  const [isIOS, setIsIOS] = useState(false);
-
-  useEffect(() => {
-    // Detect iOS
-    const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    setIsIOS(iOS);
-  }, []);
+  const [isIOS] = useState(() => /iPad|iPhone|iPod/.test(navigator.userAgent));
 
   if (isInstalled || dismissed || !showPrompt) {
     return null;

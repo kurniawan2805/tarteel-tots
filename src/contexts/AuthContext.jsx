@@ -12,19 +12,25 @@ export function AuthProvider({ children }) {
   const [onboardingComplete, setOnboardingComplete] = useState(null);
 
   const loadProfile = useCallback(async (userId) => {
-    if (!supabase) {
-      console.warn('Supabase not configured, skipping profile load');
-      return;
-    }
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
+    try {
+      if (!supabase) {
+        console.warn('Supabase not configured, skipping profile load');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
-    if (data) {
-      setProfile(data);
-      setFamilyId(data.family_id);
+      if (error) throw error;
+
+      if (data) {
+        setProfile(data);
+        setFamilyId(data.family_id);
+      }
+    } catch (err) {
+      console.error('Load profile failed:', err);
     }
   }, []);
 
@@ -39,18 +45,26 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkLocalSession = useCallback(async () => {
-    if (!supabase) {
-      console.warn('Supabase not configured, running in local mode');
+    try {
+      if (!supabase) {
+        console.warn('Supabase not configured, running in local mode');
+        setIsLocalMode(true);
+        setLoading(false);
+        return;
+      }
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) throw error;
+
+      if (session?.user) {
+        setUser(session.user);
+        await loadProfile(session.user.id);
+      }
+    } catch (err) {
+      console.error('Check local session failed:', err);
       setIsLocalMode(true);
+    } finally {
       setLoading(false);
-      return;
     }
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      setUser(session.user);
-      loadProfile(session.user.id);
-    }
-    setLoading(false);
   }, [loadProfile]);
 
   useEffect(() => {

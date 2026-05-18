@@ -29,11 +29,14 @@ export default function LiveGuidePage() {
         const chunks = getSurahChunks(surahId, surahMeta.verses);
         const chunk = chunks.find(c => baseline.current_ayah >= c.start && baseline.current_ayah <= c.end) || chunks[0];
         
-        setCurrentChunk({
-          surah: surahId,
-          surah_name: surahMeta.transliteration,
-          ...chunk
-        });
+        const timer = setTimeout(() => {
+          setCurrentChunk({
+            surah: surahId,
+            surah_name: surahMeta.transliteration,
+            ...chunk
+          });
+        }, 0);
+        return () => clearTimeout(timer);
       }
     }
   }, [child, sessionStarted, currentChunk]);

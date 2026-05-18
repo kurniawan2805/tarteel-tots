@@ -3,17 +3,15 @@ import { useState, useEffect } from 'react';
 export function useInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showPrompt, setShowPrompt] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(() => 
-    window.matchMedia('(display-mode: standalone)').matches
-  );
+  const [isInstalled, setIsInstalled] = useState(() => {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    return standalone && !isIOS;
+  });
 
   useEffect(() => {
-    // Check if running on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (isIOS) {
-      setIsInstalled(false);
-      return;
-    }
+    if (isIOS) return;
 
     // Listen for beforeinstallprompt event
     const handleBeforeInstallPrompt = (e) => {
