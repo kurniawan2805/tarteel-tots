@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { useSync } from '../../hooks/useSync';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const { isLocalMode, activeFamily } = useAuth();
   const { saveEvent, online, lastSync, syncing } = useSync();
 
   const settings = useLiveQuery(async () => {
@@ -63,6 +65,38 @@ export default function SettingsPage() {
       </header>
 
       <main className="max-w-lg mx-auto p-4 space-y-6">
+        {/* Family Card */}
+        {!isLocalMode && activeFamily && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-xl">🏠</span>
+              <h2 className="text-sm font-bold text-text-muted uppercase tracking-wider">Your Family Space</h2>
+            </div>
+            <div className="card border-2 border-primary border-opacity-10">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <p className="text-lg font-bold text-text">{activeFamily.display_name}</p>
+                  <p className="text-xs text-text-muted">Shared with your family</p>
+                </div>
+                <div className="bg-primary bg-opacity-10 px-3 py-1 rounded-lg">
+                   <p className="text-[10px] font-bold text-primary text-center">INVITE CODE</p>
+                   <p className="text-sm font-mono font-black text-primary tracking-widest">{activeFamily.family_code}</p>
+                </div>
+              </div>
+              
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(activeFamily.family_code);
+                  alert('Invite code copied! Share this with other family members so they can join your space.');
+                }}
+                className="w-full py-3 bg-white border-2 border-primary text-primary font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-primary hover:text-white transition-all active:scale-[0.98]"
+              >
+                Copy Invite Code
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* Status Card */}
         <div className="card bg-primary bg-opacity-5 border-primary border-opacity-20 flex items-center justify-between p-4">
           <div>

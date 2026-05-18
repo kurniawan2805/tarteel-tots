@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '../db/supabase';
+import { supabase, findFamilyByCode, createFamily, createMembership } from '../db/supabase';
 import { initLocalDB, db } from '../db/dexie';
 import { AuthContext } from './AuthContextInstance';
 
@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [familyId, setFamilyId] = useState(null);
+  const [activeFamily, setActiveFamily] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLocalMode, setIsLocalMode] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(null);
@@ -27,7 +28,23 @@ export function AuthProvider({ children }) {
 
       if (data) {
         setProfile(data);
-        setFamilyId(data.family_id);
+        
+        // Fetch membership to get active family
+        const { data: membership } = await supabase
+          .from('memberships')
+          .select('*, families(*)')
+          .eq('profile_id', userId)
+          .single();
+        
+        if (membership) {
+          setFamilyId(membership.family_id);
+          setActiveFamily(membership.families);
+        } else if (data.family_id) {
+          // Legacy fallback
+          setFamilyId(data.family_id);
+          const { data: family } = await supabase.from('families').select('*').eq('id', data.family_id).single();
+          setActiveFamily(family);
+        }
       }
     } catch (err) {
       console.error('Load profile failed:', err);
@@ -100,6 +117,7 @@ export function AuthProvider({ children }) {
           setUser(null);
           setProfile(null);
           setFamilyId(null);
+          setActiveFamily(null);
         }
       }
     });
@@ -123,46 +141,52 @@ export function AuthProvider({ children }) {
     if (error) throw error;
 
     if (data.user) {
-      const { data: familyData } = await supabase
-        .from('families')
-        .insert({})
-        .select()
-        .single();
-
-      await supabase.from('profiles').insert({
+      // Create profile ONLY. Family linking is now a second step.
+      const { data: profileData, error: pError } = await supabase.from('profiles').insert({
         user_id: data.user.id,
-        family_id: familyData.id,
         email,
         full_name: fullName,
         role
-      });
-      setFamilyId(familyData.id);
+      }).select().single();
+      
+      if (pError) throw pError;
+      setProfile(profileData);
     }
     return data;
   }, []);
 
-  const joinFamily = useCallback(async (email, password, familyCode) => {
-    if (!supabase) throw new Error('Supabase not configured');
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  const initFamilySpace = useCallback(async (displayName) => {
+    if (!user || !profile) throw new Error('User must be logged in');
+    
+    // 1. Create the Family
+    const family = await createFamily(displayName);
+    
+    // 2. Create Admin Membership
+    await createMembership(family.id, user.id, 'admin', profile.role === 'mother' ? 'Mother' : 'Father');
+    
+    // 3. Update local state
+    setFamilyId(family.id);
+    setActiveFamily(family);
+    
+    return family;
+  }, [user, profile]);
 
-    const { data: family } = await supabase
-      .from('families')
-      .select('id')
-      .eq('id', familyCode)
-      .single();
-
-    if (family && data.user) {
-      await supabase.from('profiles').insert({
-        user_id: data.user.id,
-        family_id: family.id,
-        email,
-        role: 'father'
-      });
-      setFamilyId(family.id);
-    }
-    return data;
-  }, []);
+  const joinFamilySpace = useCallback(async (code) => {
+    if (!user || !profile) throw new Error('User must be logged in');
+    
+    // 1. Find the Family
+    const family = await findFamilyByCode(code);
+    if (!family) throw new Error('Family code not found');
+    
+    // 2. Create Guardian Membership
+    await createMembership(family.id, user.id, 'guardian', profile.role === 'mother' ? 'Mother' : 'Father');
+    
+    // 3. Update local state
+    setFamilyId(family.id);
+    setActiveFamily(family);
+    
+    return family;
+  }, [user, profile]);
 
   const startLocalMode = useCallback(async () => {
     setIsLocalMode(true);
@@ -176,14 +200,15 @@ export function AuthProvider({ children }) {
     setUser(null);
     setProfile(null);
     setFamilyId(null);
+    setActiveFamily(null);
     setIsLocalMode(false);
   }, []);
 
   const authValue = useMemo(() => ({
-    user, profile, familyId, loading, isLocalMode, onboardingComplete,
-    loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout,
+    user, profile, familyId, activeFamily, loading, isLocalMode, onboardingComplete,
+    loginWithEmail, signupWithEmail, initFamilySpace, joinFamilySpace, startLocalMode, logout,
     refreshOnboarding: checkOnboarding
-  }), [user, profile, familyId, loading, isLocalMode, onboardingComplete, loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout, checkOnboarding]);
+  }), [user, profile, familyId, activeFamily, loading, isLocalMode, onboardingComplete, loginWithEmail, signupWithEmail, initFamilySpace, joinFamilySpace, startLocalMode, logout, checkOnboarding]);
 
   return (
     <AuthContext.Provider value={authValue}>
