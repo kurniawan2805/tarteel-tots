@@ -42,13 +42,12 @@ export async function syncToCloud(localData) {
         .upsert(unsyncedProgress.map(p => ({
           child_id: p.child_id,
           surah: p.surah,
-          surah_name: p.surah_name,
-          ayah_number: p.ayah_number,
-          ayah_text: p.ayah_text,
-          grade: p.grade,
-          next_review: p.next_review,
-          last_review: p.last_review,
-          repetition_count: p.repetition_count,
+          chunkId: p.chunkId,
+          level: p.level,
+          lastReviewed: p.lastReviewed,
+          nextSuggested: p.nextSuggested,
+          lastGrade: p.lastGrade,
+          favorite: p.favorite,
           created_at: p.created_at
         })));
       if (error) throw error;
@@ -63,6 +62,7 @@ export async function syncToCloud(localData) {
           date: s.date,
           duration: s.duration,
           mode: s.mode,
+          type: s.type,
           screen_time: s.screen_time,
           audio_only_time: s.audio_only_time,
           ayahs_reviewed: s.ayahs_reviewed,
@@ -86,7 +86,6 @@ export async function pullFromCloud(familyId) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, reason: 'no_session' };
 
-    // Fetch children and sessions in parallel
     const [childrenRes, sessionsRes] = await Promise.all([
       supabase.from('children').select('*').eq('family_id', familyId),
       supabase.from('sessions').select('*').eq('family_id', familyId)
@@ -98,7 +97,6 @@ export async function pullFromCloud(familyId) {
     const children = childrenRes.data || [];
     const sessions = sessionsRes.data || [];
 
-    // Fetch progress for all child IDs found
     let progress = [];
     if (children.length > 0) {
       const childIds = children.map(c => c.id);

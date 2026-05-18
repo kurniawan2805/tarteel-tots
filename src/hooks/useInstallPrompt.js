@@ -3,15 +3,11 @@ import { useState, useEffect } from 'react';
 export function useInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showPrompt, setShowPrompt] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(() => 
+    window.matchMedia('(display-mode: standalone)').matches
+  );
 
   useEffect(() => {
-    // Check if app is already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsInstalled(true);
-      return;
-    }
-
     // Check if running on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     if (isIOS) {

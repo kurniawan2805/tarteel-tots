@@ -3,14 +3,10 @@ import { useInstallPrompt } from '../../hooks/useInstallPrompt';
 
 export default function InstallPrompt() {
   const { showPrompt, isInstalled, handleInstall, handleDismiss } = useInstallPrompt();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem('pwaPromptDismissed') === 'true');
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    // Check if user previously dismissed
-    const wasDismissed = localStorage.getItem('pwaPromptDismissed') === 'true';
-    setDismissed(wasDismissed);
-
     // Detect iOS
     const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     setIsIOS(iOS);

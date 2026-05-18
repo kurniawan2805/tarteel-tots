@@ -1,23 +1,30 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { quranMetaData } from '../../data/quranMeta';
 import ChildMode from '../../components/ChildMode/ChildMode';
 import { useSync } from '../../hooks/useSync';
+import { useSpacedRepetition } from '../../hooks/useSpacedRepetition';
 import { fetchAyahText } from '../../utils/quranApi';
+import { getSurahChunks, CFR_GRADES } from '../../utils/spacedRepetition';
 
 export default function ChildPlayPage() {
   const { childId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { saveSession, saveProgress } = useSync();
+  const { saveSession } = useSync();
+  const { gradeChunk } = useSpacedRepetition(parseInt(childId));
+
+  const mode = searchParams.get('mode') || 'interactive';
+  const targetSurah = searchParams.get('surah');
+  const targetChunkId = searchParams.get('chunk');
 
   const child = useLiveQuery(() => db.children.get(parseInt(childId)), [childId]);
   const lastSession = useLiveQuery(
     () => db.sessions.where('child_id').equals(parseInt(childId)).reverse().first(),
     [childId]
   );
-  const progress = useLiveQuery(() => db.progress.where('child_id').equals(parseInt(childId)).toArray(), [childId]);
   const settings = useLiveQuery(async () => {
     const items = await db.settings.toArray();
     return Object.fromEntries(items.map(s => [s.key, s.value]));
@@ -26,80 +33,69 @@ export default function ChildPlayPage() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState(null);
   const [ayahQueue, setAyahQueue] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const { queue: baseQueue, nextBaseline, preview } = useMemo(() => {
-    if (!child || !settings || !progress) return { queue: [], nextBaseline: null, preview: null };
-    
-    const baseline = child.memorization_baseline || {};
-    let currentSurah = baseline.current_surah || 1;
-    let currentAyah = baseline.current_ayah || 1;
-    const direction = child.direction || 'forwards';
-    const qari = settings.default_qari || 'ar.alafasy';
+  // Generate Queue
+  useEffect(() => {
+    async function prepareQueue() {
+      if (!child || !settings) return;
+      setLoading(true);
 
-    const queue = [];
-    for (let i = 0; i < 3; i++) {
-      if (currentSurah < 1 || currentSurah > 114) break;
-      
-      const surahMeta = quranMetaData[currentSurah];
-      queue.push({
-        surah: currentSurah,
-        surah_name: surahMeta.transliteration,
-        ayah_number: currentAyah,
-        qari,
-        isNew: true
-      });
+      const qari = settings.default_qari || 'ar.alafasy';
+      let queue = [];
 
-      currentAyah++;
-      if (currentAyah > surahMeta.verses) {
-        currentAyah = 1;
-        if (direction === 'forwards') {
-          currentSurah++;
-        } else {
-          currentSurah--;
+      if (targetSurah) {
+        // Mode A: Targeted Surah/Chunk
+        const surahId = parseInt(targetSurah);
+        const surahMeta = quranMetaData[surahId];
+        const chunks = getSurahChunks(surahId, surahMeta.verses);
+        const chunk = targetChunkId ? chunks.find(c => c.id === targetChunkId) : chunks[0];
+
+        for (let a = chunk.start; a <= chunk.end; a++) {
+          const text = await fetchAyahText(surahId, a);
+          queue.push({
+            surah: surahId,
+            surah_name: surahMeta.transliteration,
+            ayah_number: a,
+            text,
+            qari,
+            chunkId: chunk.id,
+            isNew: false // We treat targeted as review/intentional
+          });
+        }
+      } else {
+        // Mode B: Continuous Progression (Baseline)
+        const baseline = child.memorization_baseline || { current_surah: 1, current_ayah: 1 };
+        let curS = baseline.current_surah;
+        let curA = baseline.current_ayah;
+
+        // Take next 3 ayahs
+        for (let i = 0; i < 3; i++) {
+          const surahMeta = quranMetaData[curS];
+          const text = await fetchAyahText(curS, curA);
+          queue.push({
+            surah: curS,
+            surah_name: surahMeta.transliteration,
+            ayah_number: curA,
+            text,
+            qari,
+            isNew: true
+          });
+
+          curA++;
+          if (curA > surahMeta.verses) {
+            curA = 1;
+            curS = (curS % 114) + 1;
+          }
         }
       }
+
+      setAyahQueue(queue);
+      setLoading(false);
     }
 
-    const dueForReview = progress?.filter(p => {
-      if (!p.next_review) return false;
-      return new Date(p.next_review) <= new Date();
-    }) || [];
-
-    const reviewQueue = dueForReview.slice(0, 3).map(p => ({
-      surah: p.surah,
-      surah_name: quranMetaData[p.surah]?.transliteration || p.surah_name,
-      ayah_number: p.ayah_number,
-      qari,
-      text: p.ayah_text,
-      isNew: false
-    }));
-
-    return {
-      queue: [...reviewQueue, ...queue],
-      nextBaseline: { current_surah: currentSurah, current_ayah: currentAyah },
-      preview: {
-        newAyahsCount: queue.length,
-        reviewAyahsCount: reviewQueue.length,
-        startAyah: queue[0] ? `${queue[0].surah_name} ${queue[0].ayah_number}` : 'End'
-      }
-    };
-  }, [child, progress, settings]);
-
-  useEffect(() => {
-    async function loadText() {
-      if (!baseQueue || baseQueue.length === 0) return;
-      
-      const fullQueue = await Promise.all(baseQueue.map(async (item) => {
-        if (item.text) return item;
-        const text = await fetchAyahText(item.surah, item.ayah_number);
-        return { ...item, text };
-      }));
-      
-      setAyahQueue(fullQueue);
-    }
-    
-    loadText();
-  }, [baseQueue]);
+    prepareQueue();
+  }, [child, settings, targetSurah, targetChunkId]);
 
   const handleSessionComplete = async () => {
     const endTime = Date.now();
@@ -110,50 +106,63 @@ export default function ChildPlayPage() {
       child_id: parseInt(childId),
       date: new Date().toISOString().split('T')[0],
       duration,
-      mode: 'interactive',
+      mode,
+      type: targetSurah ? 'review' : 'new',
       screen_time: duration,
       audio_only_time: 0,
-      ayahs_new: ayahQueue.filter(item => item.isNew).length,
-      ayahs_reviewed: ayahQueue.filter(item => !item.isNew).length
+      ayahs_new: targetSurah ? 0 : ayahQueue.length,
+      ayahs_reviewed: targetSurah ? ayahQueue.length : 0
     });
 
-    // 2. Save Progress for new ayahs
-    const newAyahs = ayahQueue.filter(item => item.isNew);
-    for (const item of newAyahs) {
-      await saveProgress({
-        child_id: parseInt(childId),
-        surah: item.surah,
-        surah_name: item.surah_name,
-        ayah_number: item.ayah_number,
-        ayah_text: item.text,
-        grade: 'good',
-        next_review: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        last_review: new Date().toISOString(),
-        repetition_count: 1
-      });
-    }
+    // 2. Grade & Advance Baseline
+    if (targetSurah) {
+      // For targeted chunks, we assume "okay" as default completion
+      // Proper grading happens in Parent Dashboard later, but we log the attempt
+      const surahId = parseInt(targetSurah);
+      await gradeChunk(surahId, targetChunkId, CFR_GRADES.OKAY);
+    } else {
+      // For new ayahs, we advance baseline
+      const lastAyah = ayahQueue[ayahQueue.length - 1];
+      let nextS = lastAyah.surah;
+      let nextA = lastAyah.ayah_number + 1;
+      if (nextA > quranMetaData[nextS].verses) {
+        nextA = 1;
+        nextS = (nextS % 114) + 1;
+      }
 
-    // 3. Advance Baseline
-    if (nextBaseline) {
       await db.children.update(parseInt(childId), {
-        'memorization_baseline.current_surah': nextBaseline.current_surah,
-        'memorization_baseline.current_ayah': nextBaseline.current_ayah
+        'memorization_baseline.current_surah': nextS,
+        'memorization_baseline.current_ayah': nextA
       });
+
+      // Also create a "seed" progress record for CFR
+      const chunks = getSurahChunks(lastAyah.surah, quranMetaData[lastAyah.surah].verses);
+      const chunk = chunks.find(c => lastAyah.ayah_number >= c.start && lastAyah.ayah_number <= c.end);
+      await gradeChunk(lastAyah.surah, chunk.id, CFR_GRADES.HAPPY);
     }
 
     setSessionStarted(false);
     navigate('/dashboard');
   };
 
-  if (!child || !settings) {
+  if (!child || !settings || loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
-        <p className="text-text-muted">Loading...</p>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-text-muted font-medium">Preparing Garden...</p>
+        </div>
       </div>
     );
   }
 
   if (!sessionStarted) {
+    const preview = {
+      title: targetSurah ? quranMetaData[targetSurah].transliteration : 'Continuous Learning',
+      subtitle: targetSurah ? `Chunk ${targetChunkId}` : 'Growing your garden',
+      ayahs: ayahQueue.length
+    };
+
     return (
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
         <span className="text-7xl mb-4 block">{child.avatar}</span>
@@ -166,24 +175,16 @@ export default function ChildPlayPage() {
               <>
                 <p className="text-sm font-bold text-text">{new Date(lastSession.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
                 <p className="text-xs text-text-muted">{Math.round(lastSession.duration / 60)} min session</p>
-                <p className="text-xs text-primary font-bold mt-1">+{lastSession.ayahs_new || 0} ayahs</p>
               </>
             ) : (
-              <p className="text-xs text-text-muted italic">No sessions yet</p>
+              <p className="text-xs text-text-muted italic">First session!</p>
             )}
           </div>
 
           <div className="card p-4 text-left">
             <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Next Up</h3>
-            {preview ? (
-              <>
-                <p className="text-sm font-bold text-text">{preview.startAyah}</p>
-                <p className="text-xs text-text-muted">{preview.newAyahsCount} new, {preview.reviewAyahsCount} review</p>
-                <p className="text-xs text-secondary font-bold mt-1">Ready to start</p>
-              </>
-            ) : (
-              <p className="text-xs text-text-muted italic">Calculating...</p>
-            )}
+            <p className="text-sm font-bold text-text">{preview.title}</p>
+            <p className="text-xs text-text-muted">{preview.ayahs} ayahs</p>
           </div>
         </div>
 
@@ -204,7 +205,7 @@ export default function ChildPlayPage() {
   return (
     <ChildMode
       ayahQueue={ayahQueue}
-      loopsPerAyah={5}
+      loopsPerAyah={settings.default_loops || 5}
       memorizeTarget={settings.memorize_tap_target || 10}
       screenTimeLimit={settings.screen_time_limit}
       onSessionComplete={handleSessionComplete}

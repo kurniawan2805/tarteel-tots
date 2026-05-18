@@ -4,10 +4,10 @@ import { db } from '../../db/dexie';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useSync } from '../../hooks/useSync';
-import { getStreakDays } from '../../utils/spacedRepetition';
+import { getStreakDays, CFR_LEVELS, getSurahChunks } from '../../utils/spacedRepetition';
 import Garden, { GardenProgress } from '../../components/Garden/Garden';
 import { quranMetaData } from '../../data/quranMeta';
-import { fetchAyahText, fetchSurahText } from '../../utils/quranApi';
+import { useCFR } from '../../hooks/useCFR';
 
 const QARI_NAMES = {
   'ar.alafasy': 'Mishary Alafasy',
@@ -41,6 +41,8 @@ export default function ParentDashboard() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const { suggestions } = useCFR(selectedChild?.id);
+
   const memorizedSurahIds = useMemo(() => {
     if (!selectedChild || !progress) return new Set();
     const childProgress = progress.filter(p => p.child_id === selectedChild.id);
@@ -69,41 +71,34 @@ export default function ParentDashboard() {
 
     const childProgress = progress.filter(p => p.child_id === selectedChild.id);
     
-    // 1. Group by Date
     const byDate = {};
     childProgress.forEach(p => {
-      const dateKey = p.last_review ? new Date(p.last_review).toLocaleDateString() : 'Unknown';
+      const dateKey = p.lastReviewed ? new Date(p.lastReviewed).toLocaleDateString() : 'Unknown';
       if (!byDate[dateKey]) byDate[dateKey] = [];
       byDate[dateKey].push(p);
     });
 
     const result = Object.entries(byDate).map(([date, items]) => {
-      // 2. Group by Surah within each date
       const bySurah = {};
       items.forEach(p => {
         if (!bySurah[p.surah]) bySurah[p.surah] = [];
         bySurah[p.surah].push(p);
       });
 
-      const surahGroups = Object.entries(bySurah).map(([surahId, ayahs]) => {
-        const sorted = ayahs.sort((a, b) => a.ayah_number - b.ayah_number);
-        const ranges = [];
-        let currentRange = null;
-
-        sorted.forEach(a => {
-          if (!currentRange) {
-            currentRange = { surah: a.surah, surah_name: a.surah_name, start: a.ayah_number, end: a.ayah_number, grade: a.grade };
-          } else if (a.ayah_number === currentRange.end + 1) {
-            currentRange.end = a.ayah_number;
-            // Aggregate grade: if any is 'needs_help', overall is 'needs_help'
-            if (a.grade === 'needs_help') currentRange.grade = 'needs_help';
-            else if (a.grade === 'good' && currentRange.grade === 'perfect') currentRange.grade = 'good';
-          } else {
-            ranges.push(currentRange);
-            currentRange = { surah: a.surah, surah_name: a.surah_name, start: a.ayah_number, end: a.ayah_number, grade: a.grade };
-          }
-        });
-        if (currentRange) ranges.push(currentRange);
+      const surahGroups = Object.entries(bySurah).map(([surahId, chunks]) => {
+        const surahMeta = quranMetaData[surahId];
+        const allChunks = getSurahChunks(parseInt(surahId), surahMeta?.verses || 7);
+        
+        const ranges = chunks.map(c => {
+          const chunkMeta = allChunks.find(ac => ac.id === c.chunkId);
+          return {
+            surah: c.surah,
+            surah_name: surahMeta?.transliteration || `Surah ${c.surah}`,
+            start: chunkMeta?.start || 1,
+            end: chunkMeta?.end || 1,
+            grade: c.lastGrade
+          };
+        }).sort((a, b) => a.start - b.start);
 
         return { surahId, ranges };
       });
@@ -124,8 +119,13 @@ export default function ParentDashboard() {
     }
   }, [children, selectedChild]);
 
-  const handleStartSession = (child, mode = 'interactive') => {
-    navigate(`/play/${child.id}?mode=${mode}`);
+  const handleStartSession = (child, mode = 'interactive', suggestedItem = null) => {
+    let url = `/play/${child.id}?mode=${mode}`;
+    if (suggestedItem) {
+      url += `&surah=${suggestedItem.surah}`;
+      if (suggestedItem.chunkId) url += `&chunk=${suggestedItem.chunkId}`;
+    }
+    navigate(url);
   };
 
   const handleStartLiveGuide = (child) => {
@@ -145,47 +145,46 @@ export default function ParentDashboard() {
   const handleManualAdd = async () => {
     if (!selectedChild) return;
     
-    let ayahsToAdd = [];
     const surahsToProcess = manualAddMode === 'surah' ? selectedSurahs : [manualEntry.surah];
+    const now = new Date().toISOString();
+    const nextSuggested = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
 
     for (const surahId of surahsToProcess) {
+      const surahMeta = quranMetaData[surahId];
+      if (!surahMeta) continue;
+
+      const chunks = getSurahChunks(surahId, surahMeta.verses);
+      let chunksToMark = [];
+
       if (manualAddMode === 'single') {
-        const text = await fetchAyahText(surahId, manualEntry.ayah);
-        if (text) ayahsToAdd.push({ surah: surahId, ayah: manualEntry.ayah, text });
-      } else {
-        const surahData = await fetchSurahText(surahId);
-        if (surahData) {
-          if (manualAddMode === 'range') {
-            const start = Math.min(manualEntry.ayah, manualEntry.endAyah);
-            const end = Math.max(manualEntry.ayah, manualEntry.endAyah);
-            for (let i = start; i <= end; i++) {
-              const ayahData = surahData.find(a => a.numberInSurah === i);
-              if (ayahData) ayahsToAdd.push({ surah: surahId, ayah: i, text: ayahData.text });
-            }
-          } else if (manualAddMode === 'surah') {
-            ayahsToAdd.push(...surahData.map(a => ({ surah: surahId, ayah: a.numberInSurah, text: a.text })));
-          }
-        }
+        const chunk = chunks.find(c => manualEntry.ayah >= c.start && manualEntry.ayah <= c.end);
+        if (chunk) chunksToMark.push(chunk);
+      } else if (manualAddMode === 'range') {
+        const start = Math.min(manualEntry.ayah, manualEntry.endAyah);
+        const end = Math.max(manualEntry.ayah, manualEntry.endAyah);
+        chunksToMark = chunks.filter(c => 
+          (c.start >= start && c.start <= end) || 
+          (c.end >= start && c.end <= end) ||
+          (start >= c.start && start <= c.end)
+        );
+      } else if (manualAddMode === 'surah') {
+        chunksToMark = chunks;
       }
-    }
 
-    const now = new Date().toISOString();
-    const nextReview = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    for (const item of ayahsToAdd) {
-      const exists = progress.find(p => p.child_id === selectedChild.id && p.surah === item.surah && p.ayah_number === item.ayah);
-      if (!exists) {
-        await saveProgress({
-          child_id: selectedChild.id,
-          surah: item.surah,
-          surah_name: quranMetaData[item.surah].transliteration,
-          ayah_number: item.ayah,
-          ayah_text: item.text,
-          grade: 'perfect',
-          next_review: nextReview,
-          last_review: now,
-          repetition_count: 1
-        });
+      for (const chunk of chunksToMark) {
+        const exists = progress.find(p => p.child_id === selectedChild.id && p.surah === surahId && p.chunkId === chunk.id);
+        if (!exists) {
+          await saveProgress({
+            child_id: selectedChild.id,
+            surah: surahId,
+            chunkId: chunk.id,
+            level: 3, // Start at 'Strong Tree' for manually added
+            lastReviewed: now,
+            nextSuggested: nextSuggested,
+            lastGrade: 'happy',
+            favorite: false
+          });
+        }
       }
     }
 
@@ -256,29 +255,72 @@ export default function ParentDashboard() {
             </div>
 
             {selectedChild && (
-              <div className="card">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-4xl">{selectedChild.avatar}</span>
-                  <div>
-                    <h3 className="text-lg font-bold text-text">{selectedChild.name}'s Garden</h3>
-                    <GardenProgress streak={childStreak} goal={selectedChild.daily_goal_minutes * 3} />
-                  </div>
+              <div className="space-y-4">
+                {/* 3 Garden Visit Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {suggestions.length > 0 ? (
+                    suggestions.map((card, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleStartSession(selectedChild, 'interactive', card.item)}
+                        className={`card text-left p-5 flex flex-col justify-between transition-all active:scale-[0.98] border-b-4 ${
+                          card.type === 'favorite' ? 'border-danger border-opacity-30' :
+                          card.type === 'due' ? 'border-primary border-opacity-30' :
+                          'border-gold border-opacity-30'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-sm font-bold text-text">{card.title}</h3>
+                            <span className="text-xl">
+                              {CFR_LEVELS.find(l => l.level === card.item.level)?.icon || '🌱'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-3">{card.subtitle}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="bg-bg-dark rounded-xl px-4 py-2 w-full">
+                              <span className="text-lg font-bold text-primary">{card.item.surahName}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between w-full">
+                          <span className="text-[9px] font-bold text-text-muted">TAP TO VISIT</span>
+                          <span className="text-lg">➔</span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="card col-span-3 py-8 text-center bg-bg-dark border-dashed border-2 border-white">
+                      <span className="text-4xl block mb-2">🧺</span>
+                      <p className="text-sm text-text-muted font-medium italic">No garden visits today. Try adding a new surah below!</p>
+                    </div>
+                  )}
                 </div>
-                <Garden streak={childStreak} size="lg" />
 
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                  <button
-                    onClick={() => handleStartSession(selectedChild, 'interactive')}
-                    className="btn-primary text-center"
-                  >
-                    🎮 Play Mode
-                  </button>
-                  <button
-                    onClick={() => handleStartLiveGuide(selectedChild)}
-                    className="btn-secondary text-center"
-                  >
-                    👤 Live Guide
-                  </button>
+                <div className="card">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-4xl">{selectedChild.avatar}</span>
+                    <div>
+                      <h3 className="text-lg font-bold text-text">{selectedChild.name}'s Garden</h3>
+                      <GardenProgress streak={childStreak} goal={selectedChild.daily_goal_minutes * 3} />
+                    </div>
+                  </div>
+                  <Garden streak={childStreak} size="lg" />
+
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <button
+                      onClick={() => handleStartSession(selectedChild, 'interactive')}
+                      className="btn-primary text-center"
+                    >
+                      🎮 Play Mode
+                    </button>
+                    <button
+                      onClick={() => handleStartLiveGuide(selectedChild)}
+                      className="btn-secondary text-center"
+                    >
+                      👤 Live Guide
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -573,13 +615,13 @@ export default function ParentDashboard() {
                                     </p>
                                   </div>
                                   <span className={`px-3 py-1 rounded-full text-[10px] font-bold text-white shadow-sm ${
-                                    range.grade === 'perfect' ? 'bg-success' :
-                                    range.grade === 'good' ? 'bg-warning' :
+                                    range.grade === 'happy' ? 'bg-success' :
+                                    range.grade === 'okay' ? 'bg-warning' :
                                     'bg-danger'
                                   }`}>
-                                    {range.grade === 'perfect' ? 'PERFECT' :
-                                     range.grade === 'good' ? 'GOOD' :
-                                     'NEEDS HELP'}
+                                    {range.grade === 'happy' ? 'HAPPY' :
+                                     range.grade === 'okay' ? 'OKAY' :
+                                     'TRY AGAIN'}
                                   </span>
                                 </div>
                               ))}

@@ -2,54 +2,38 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('TarteelTotsDB');
 
-db.version(2).stores({
+db.version(3).stores({
   profiles: '++id, family_id, email, role, created_at',
   children: '++id, family_id, name, age, created_at',
-  progress: '++id, child_id, surah, surah_name, ayah_number, ayah_text, grade, next_review, last_review, repetition_count, created_at, synced',
-  sessions: '++id, child_id, family_id, date, duration, mode, screen_time, audio_only_time, ayahs_reviewed, ayahs_new, created_at, synced',
-  audio_cache: 'key, last_used', // key: "surah-ayah-qari"
+  progress: '++id, child_id, surah, chunkId, level, lastReviewed, nextSuggested, lastGrade, favorite, created_at, synced',
+  sessions: '++id, child_id, family_id, date, duration, mode, type, screen_time, audio_only_time, ayahs_reviewed, ayahs_new, created_at, synced',
+  audio_cache: 'key, last_used',
   settings: 'key, value'
 });
 
-// Robust initialization
 export async function initLocalDB() {
-  try {
-    await db.open();
-    const settingsCount = await db.settings.count();
-    if (settingsCount === 0) {
-      await db.settings.bulkAdd([
-        { key: 'screen_time_limit', value: 15 },
-        { key: 'default_qari', value: 'ar.alafasy' },
-        { key: 'memorize_tap_target', value: 10 },
-        { key: 'child_mode_pin', value: null },
-        { key: 'onboarding_complete', value: false }
-      ]);
-    }
-  } catch (err) {
-    console.error('Dexie init error:', err);
-    // If upgrade failed, we might need to delete and recreate (extreme fallback)
-    if (err.name === 'VersionError') {
-      console.warn('Database version mismatch, resetting...');
-      // Note: In a real app, you'd want to be more careful about data loss
-    }
-    throw err;
-  }
+  return db.open();
 }
 
-export async function exportLocalData() {
-  return {
-    profiles: await db.profiles.toArray(),
-    children: await db.children.toArray(),
-    progress: await db.progress.toArray(),
-    sessions: await db.sessions.toArray(),
-    settings: await db.settings.toArray()
-  };
+db.on('populate', () => {
+  db.settings.bulkAdd([
+    { key: 'default_qari', value: 'ar.alafasy' },
+    { key: 'screen_time_limit', value: 15 },
+    { key: 'memorize_tap_target', value: 10 },
+    { key: 'default_loops', value: 5 }
+  ]);
+});
+
+export async function clearLocalData() {
+  await db.profiles.clear();
+  await db.children.clear();
+  await db.progress.clear();
+  await db.sessions.clear();
+  await db.settings.clear();
 }
 
-export async function importLocalData(data) {
-  if (data.profiles?.length) await db.profiles.bulkPut(data.profiles);
-  if (data.children?.length) await db.children.bulkPut(data.children);
-  if (data.progress?.length) await db.progress.bulkPut(data.progress);
-  if (data.sessions?.length) await db.sessions.bulkPut(data.sessions);
-  if (data.settings?.length) await db.settings.bulkPut(data.settings);
-}
+db.exportLocalData = async () => {
+  const progress = await db.progress.where('synced').equals(0).toArray();
+  const sessions = await db.sessions.where('synced').equals(0).toArray();
+  return { progress, sessions };
+};

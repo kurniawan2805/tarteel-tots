@@ -4,47 +4,83 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import LiveGuideMode from '../../components/LiveGuide/LiveGuideMode';
 import { useSync } from '../../hooks/useSync';
+import { useSpacedRepetition } from '../../hooks/useSpacedRepetition';
+import { getSurahChunks } from '../../utils/spacedRepetition';
+import { quranMetaData } from '../../data/quranMeta';
 
 export default function LiveGuidePage() {
   const { childId } = useParams();
   const navigate = useNavigate();
-  const { saveProgress, saveSession } = useSync();
+  const { saveSession } = useSync();
+  const { gradeChunk } = useSpacedRepetition(parseInt(childId));
 
   const child = useLiveQuery(() => db.children.get(parseInt(childId)), [childId]);
 
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState(null);
-  const [currentAyah, setCurrentAyah] = useState(null);
-  const [ayahsCompleted, setAyahsCompleted] = useState([]);
+  const [currentChunk, setCurrentChunk] = useState(null);
 
   useEffect(() => {
-    if (child && !sessionStarted && !currentAyah) {
-      const baseline = child.memorization_baseline || {};
-      const timer = setTimeout(() => {
-        setCurrentAyah({
-          surah: baseline.current_surah || 1,
-          ayah_number: baseline.current_ayah || 1,
-          surah_name: `Surah ${baseline.current_surah || 1}`
+    if (child && !sessionStarted && !currentChunk) {
+      const baseline = child.memorization_baseline || { current_surah: 1, current_ayah: 1 };
+      const surahId = baseline.current_surah;
+      const surahMeta = quranMetaData[surahId];
+      if (surahMeta) {
+        const chunks = getSurahChunks(surahId, surahMeta.verses);
+        const chunk = chunks.find(c => baseline.current_ayah >= c.start && baseline.current_ayah <= c.end) || chunks[0];
+        
+        setCurrentChunk({
+          surah: surahId,
+          surah_name: surahMeta.transliteration,
+          ...chunk
         });
-      }, 0);
-      return () => clearTimeout(timer);
+      }
     }
-  }, [child, sessionStarted, currentAyah]);
+  }, [child, sessionStarted, currentChunk]);
 
-  const handleGrade = async (gradeData) => {
-    await saveProgress({
-      child_id: parseInt(childId),
-      ...gradeData
-    });
+  const handleGrade = async (grade) => {
+    if (!currentChunk) return;
+    
+    await gradeChunk(currentChunk.surah, currentChunk.id, grade);
 
-    setAyahsCompleted([...ayahsCompleted, gradeData]);
+    // Advance baseline if it was the current baseline
+    if (child.memorization_baseline?.current_surah === currentChunk.surah) {
+      const surahMeta = quranMetaData[currentChunk.surah];
+      let nextA = currentChunk.end + 1;
+      let nextS = currentChunk.surah;
+      
+      if (nextA > surahMeta.verses) {
+        nextA = 1;
+        nextS = (nextS % 114) + 1;
+      }
+      
+      await db.children.update(child.id, {
+        'memorization_baseline.current_surah': nextS,
+        'memorization_baseline.current_ayah': nextA
+      });
+    }
   };
 
-  const handleNextAyah = () => {
-    if (currentAyah) {
-      setCurrentAyah({
-        ...currentAyah,
-        ayah_number: currentAyah.ayah_number + 1
+  const handleNextChunk = () => {
+    if (!currentChunk) return;
+    
+    const surahMeta = quranMetaData[currentChunk.surah];
+    const chunks = getSurahChunks(currentChunk.surah, surahMeta.verses);
+    const currentIndex = chunks.findIndex(c => c.id === currentChunk.id);
+    
+    if (currentIndex < chunks.length - 1) {
+      setCurrentChunk({
+        ...currentChunk,
+        ...chunks[currentIndex + 1]
+      });
+    } else {
+      const nextS = (currentChunk.surah % 114) + 1;
+      const nextSurahMeta = quranMetaData[nextS];
+      const nextChunks = getSurahChunks(nextS, nextSurahMeta.verses);
+      setCurrentChunk({
+        surah: nextS,
+        surah_name: nextSurahMeta.transliteration,
+        ...nextChunks[0]
       });
     }
   };
@@ -55,11 +91,15 @@ export default function LiveGuidePage() {
 
     await saveSession({
       child_id: parseInt(childId),
+      family_id: child.family_id,
       date: new Date().toISOString().split('T')[0],
       duration,
       mode: 'live_guide',
+      type: 'mixed',
       screen_time: 0,
-      audio_only_time: duration
+      audio_only_time: duration,
+      ayahs_reviewed: 0,
+      ayahs_new: 0
     });
 
     navigate('/dashboard');
@@ -109,9 +149,9 @@ export default function LiveGuidePage() {
   return (
     <LiveGuideMode
       child={child}
-      ayah={currentAyah}
+      chunk={currentChunk}
       onGrade={handleGrade}
-      onComplete={handleNextAyah}
+      onComplete={handleNextChunk}
       onSessionComplete={finalizeSession}
     />
   );

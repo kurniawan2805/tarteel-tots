@@ -1,90 +1,129 @@
-const GRADE_INTERVALS = {
-  needs_help: 1,
-  good: 3,
-  perfect: 7
+/**
+ * CFR Mastery Levels
+ */
+export const CFR_LEVELS = [
+  { level: 1, name: "New Seed", icon: "🌱", intervalDays: 1 },
+  { level: 2, name: "Growing", icon: "🌿", intervalDays: 3 },
+  { level: 3, name: "Strong Tree", icon: "🌳", intervalDays: 7 },
+  { level: 4, name: "Stable Palm", icon: "🌴", intervalDays: 21 }
+];
+
+/**
+ * CFR Grading States
+ */
+export const CFR_GRADES = {
+  HAPPY: "happy",
+  OKAY: "okay",
+  TRY_AGAIN: "try_again"
 };
 
-export function calculateNextReview(grade, currentInterval = 1) {
-  const baseInterval = GRADE_INTERVALS[grade] || 1;
-  if (grade === 'perfect') {
-    return Math.max(baseInterval, currentInterval * 1.5);
+/**
+ * Calculates next suggested review date based on CFR logic
+ */
+export function calculateNextReview(currentLevel, grade) {
+  const now = new Date();
+  let nextLevel = currentLevel || 1;
+  let intervalDays = 1;
+
+  if (grade === CFR_GRADES.HAPPY) {
+    if (nextLevel < 4) nextLevel += 1;
+    intervalDays = CFR_LEVELS.find(l => l.level === nextLevel).intervalDays;
+  } else if (grade === CFR_GRADES.OKAY) {
+    intervalDays = CFR_LEVELS.find(l => l.level === nextLevel).intervalDays;
+  } else if (grade === CFR_GRADES.TRY_AGAIN) {
+    // Keep level same but refresh tomorrow
+    intervalDays = 1;
   }
-  if (grade === 'needs_help') {
-    return 1;
+
+  const nextDate = new Date(now);
+  nextDate.setDate(now.getDate() + intervalDays);
+  
+  return {
+    nextLevel,
+    nextSuggested: nextDate.toISOString()
+  };
+}
+
+/**
+ * Calculates internal priority score for recommendations
+ */
+export function calculatePriority(progress) {
+  const now = new Date();
+  const nextSuggested = new Date(progress.nextSuggested || now);
+  
+  // Calculate days late
+  const diffTime = now - nextSuggested;
+  const daysLate = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+
+  const dueWeight = Math.min(daysLate, 5) * 0.7;
+  const favoriteBoost = progress.favorite ? 2 : 0;
+  const struggleBoost = progress.lastGrade === CFR_GRADES.TRY_AGAIN ? 1.5 : 0;
+
+  return dueWeight + favoriteBoost + struggleBoost;
+}
+
+/**
+ * Determines if a surah should be chunked or kept whole
+ */
+export function getSurahChunks(surahId, ayahCount) {
+  // Surahs in Juz Amma (78-114) that are very short
+  const shortSurahs = [1, 103, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114];
+  
+  if (shortSurahs.includes(surahId) || ayahCount <= 10) {
+    return [{ start: 1, end: ayahCount, id: `${surahId}-full` }];
   }
-  return baseInterval;
-}
 
-export function getNextReviewDate(grade, currentInterval = 1) {
-  const days = calculateNextReview(grade, currentInterval);
-  const next = new Date();
-  next.setDate(next.getDate() + Math.round(days));
-  return next.toISOString();
-}
-
-export function getSuggestedSession(children, progress) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const suggestions = children.map(child => {
-    const childProgress = progress.filter(p => p.child_id === child.id);
-    
-    const overdue = childProgress.filter(p => {
-      if (!p.next_review) return false;
-      return new Date(p.next_review) <= today;
-    }).sort((a, b) => new Date(a.next_review) - new Date(b.next_review));
-
-    const newAyahs = getSuggestedNewAyahs(child);
-
-    return {
-      child,
-      review: overdue.slice(0, 5),
-      newAyahs: newAyahs.slice(0, 2),
-      isReviewHeavy: overdue.length > 3
-    };
-  });
-
-  return suggestions;
-}
-
-function getSuggestedNewAyahs(child) {
-  const baseline = child.memorization_baseline || {};
-  const currentSurah = baseline.current_surah || 1;
-  const currentAyah = baseline.current_ayah || 1;
-
-  const ayahs = [];
-  for (let i = 0; i < 3; i++) {
-    ayahs.push({
-      surah: currentSurah,
-      ayah_number: currentAyah + i
-    });
+  // Otherwise chunk by 3 ayahs
+  const chunks = [];
+  for (let i = 1; i <= ayahCount; i += 3) {
+    const end = Math.min(i + 2, ayahCount);
+    chunks.push({ start: i, end, id: `${surahId}-${i}-${end}` });
   }
-  return ayahs;
+  return chunks;
 }
 
+/**
+ * Forgiving Mercy Streak logic
+ */
 export function getStreakDays(sessions) {
-  if (!sessions.length) return 0;
+  if (!sessions || sessions.length === 0) return 0;
 
-  const sorted = [...sessions].sort((a, b) => new Date(b.date) - new Date(a.date));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const sortedDates = [...new Set(sessions.map(s => {
+    const d = new Date(s.date);
+    return d.toDateString();
+  }))].sort((a, b) => new Date(b) - new Date(a));
 
   let streak = 0;
-  let checkDate = new Date(today);
+  let graceUsed = 0;
+  const maxGrace = 2; // 2 grace days in a rolling window
+  
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  
+  let currentCheck = new Date(today);
 
-  const hasSessionOnDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return sorted.some(s => s.date === dateStr || s.date?.startsWith(dateStr));
-  };
-
-  if (!hasSessionOnDate(checkDate)) {
-    checkDate.setDate(checkDate.getDate() - 1);
-    if (!hasSessionOnDate(checkDate)) return 0;
+  // If didn't study today, check if yesterday exists
+  if (sortedDates[0] !== today.toDateString()) {
+    currentCheck.setDate(currentCheck.getDate() - 1);
+    if (sortedDates[0] !== currentCheck.toDateString()) {
+      // If neither today nor yesterday, check if we're still within grace
+      // But for simplicity of MVP: if yesterday was skipped, we start counting grace
+    }
   }
 
-  while (hasSessionOnDate(checkDate)) {
-    streak++;
-    checkDate.setDate(checkDate.getDate() - 1);
+  while (true) {
+    const dateStr = currentCheck.toDateString();
+    if (sortedDates.includes(dateStr)) {
+      streak++;
+    } else {
+      graceUsed++;
+      if (graceUsed > maxGrace) break;
+      // Streak freezes on grace days
+    }
+    currentCheck.setDate(currentCheck.getDate() - 1);
+    
+    // Safety break
+    if (streak > 1000) break;
   }
 
   return streak;
@@ -97,8 +136,4 @@ export function getGardenStage(streak) {
   if (streak < 14) return { stage: 3, label: 'Small Tree', emoji: '🌳' };
   if (streak < 30) return { stage: 4, label: 'Growing Palm', emoji: '🌴' };
   return { stage: 5, label: 'Producing Date Palm', emoji: '🌴✨' };
-}
-
-export function getGrowthStageFromDays(days) {
-  return getGardenStage(days);
 }

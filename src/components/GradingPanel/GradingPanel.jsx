@@ -1,50 +1,47 @@
 import { playChime } from '../../utils/audioEngine';
+import { CFR_GRADES } from '../../utils/spacedRepetition';
 
 const GRADE_OPTIONS = [
   {
-    id: 'needs_help',
-    label: 'Needs Help',
+    id: CFR_GRADES.TRY_AGAIN,
+    label: 'Try Again',
     color: 'bg-danger',
     hoverColor: 'hover:bg-danger-dark',
     emoji: '🔴',
-    schedule: 'Retry tomorrow'
+    schedule: 'Tomorrow'
   },
   {
-    id: 'good',
-    label: 'Good',
+    id: CFR_GRADES.OKAY,
+    label: 'Okay',
     color: 'bg-warning',
     hoverColor: 'hover:bg-warning',
     emoji: '🟡',
-    schedule: 'Review in 3 days'
+    schedule: 'Stay here'
   },
   {
-    id: 'perfect',
-    label: 'Perfect',
+    id: CFR_GRADES.HAPPY,
+    label: 'Happy',
     color: 'bg-success',
     hoverColor: 'hover:bg-primary-dark',
     emoji: '🟢',
-    schedule: 'Review in 7 days'
+    schedule: 'Grow tree'
   }
 ];
 
-export default function GradingPanel({ onGrade, ayahText, surahName, ayahNumber }) {
+export default function GradingPanel({ onGrade, surahName, chunkLabel }) {
   const handleGrade = (grade) => {
-    playChime(grade === 'perfect' ? 'complete' : grade === 'good' ? 'success' : 'tap');
+    playChime(grade === CFR_GRADES.HAPPY ? 'complete' : grade === CFR_GRADES.OKAY ? 'success' : 'tap');
     onGrade(grade);
   };
 
   return (
     <div className="card w-full max-w-md mx-auto">
-      {ayahText && (
-        <div className="mb-4 text-center">
-          <p className="arabic-text text-2xl text-text mb-1">{ayahText}</p>
-          <p className="text-sm text-text-muted">
-            {surahName} - Ayah {ayahNumber}
-          </p>
-        </div>
-      )}
+      <div className="mb-4 text-center">
+        <h3 className="text-lg font-bold text-text">{surahName}</h3>
+        <p className="text-sm text-text-muted">{chunkLabel}</p>
+      </div>
 
-      <p className="text-center text-sm font-semibold text-text mb-3">How did they do?</p>
+      <p className="text-center text-sm font-semibold text-text mb-3">How was the recitation?</p>
 
       <div className="flex gap-3 justify-center">
         {GRADE_OPTIONS.map((option) => (
@@ -76,7 +73,7 @@ export function QuickGrade({ onGrade, size = 'md' }) {
         <button
           key={option.id}
           onClick={() => {
-            playChime(option.id === 'perfect' ? 'complete' : 'success');
+            playChime(option.id === CFR_GRADES.HAPPY ? 'complete' : 'success');
             onGrade(option.id);
           }}
           className={`${option.color} ${option.hoverColor} ${sizeClasses[size]} text-white font-bold rounded-lg transition-all duration-200 active:scale-95`}

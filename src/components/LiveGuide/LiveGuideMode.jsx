@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { QuickGrade } from '../GradingPanel/GradingPanel';
 import { playChime } from '../../utils/audioEngine';
 
-export default function LiveGuideMode({ child, ayah, onComplete, onGrade, onSessionComplete }) {
+export default function LiveGuideMode({ child, chunk, onComplete, onGrade, onSessionComplete }) {
   const [repetitionCount, setRepetitionCount] = useState(0);
   const [sessionComplete, setSessionComplete] = useState(false);
 
@@ -12,12 +12,7 @@ export default function LiveGuideMode({ child, ayah, onComplete, onGrade, onSess
   };
 
   const handleGrade = (grade) => {
-    onGrade?.({
-      surah: ayah.surah,
-      ayah_number: ayah.ayah_number,
-      grade,
-      repetition_count: repetitionCount
-    });
+    onGrade?.(grade);
     setSessionComplete(true);
     playChime('complete');
   };
@@ -40,7 +35,7 @@ export default function LiveGuideMode({ child, ayah, onComplete, onGrade, onSess
               }}
               className="btn-primary w-full"
             >
-              Next Ayah
+              Next Chunk
             </button>
             <button
               onClick={onSessionComplete}
@@ -63,19 +58,19 @@ export default function LiveGuideMode({ child, ayah, onComplete, onGrade, onSess
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="card w-full max-w-lg text-center mb-8">
-          <p className="text-sm text-text-muted mb-2">
-            {ayah.surah_name || `Surah ${ayah.surah}`} : Ayah {ayah.ayah_number}
+          <h2 className="text-2xl font-bold text-text mb-1">
+            {chunk?.surah_name || `Surah ${chunk?.surah}`}
+          </h2>
+          <p className="text-sm text-text-muted mb-4">
+            Ayah {chunk?.start}{chunk?.start !== chunk?.end ? ` – ${chunk?.end}` : ''}
           </p>
-          {ayah.text && (
-            <p className="arabic-text text-4xl text-text leading-loose mb-2">
-              {ayah.text}
+          
+          <div className="bg-bg-dark rounded-2xl p-6 border-2 border-dashed border-white">
+            <p className="text-text-muted italic text-sm">
+              Recite these ayahs face-to-face with your child.
+              Tap the button below for every repetition they complete.
             </p>
-          )}
-          {ayah.translation && (
-            <p className="text-text-light text-sm italic">
-              {ayah.translation}
-            </p>
-          )}
+          </div>
         </div>
 
         <div className="flex items-center gap-6 mb-8">
@@ -92,7 +87,7 @@ export default function LiveGuideMode({ child, ayah, onComplete, onGrade, onSess
         </div>
 
         <div className="w-full max-w-md">
-          <p className="text-center text-sm font-semibold text-text mb-3">Grade this session:</p>
+          <p className="text-center text-sm font-semibold text-text mb-3">Grade this section:</p>
           <QuickGrade onGrade={handleGrade} size="lg" />
         </div>
       </div>
