@@ -4,7 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import { quranMetaData } from '../../data/quranMeta';
 import { useAuth } from '../../hooks/useAuth';
 
-const AVATARS = ['👧', '👦', '🧒', '👶', '🧕', '👱‍♀️', '👱'];
+const AVATARS = [
+  '🌟', // Shining Star
+  '🌙', // Crescent Moon
+  '☀️', // Bright Sun
+  '🌈', // Rainbow
+  '🎈', // Balloon
+  '🍀', // Four-Leaf Clover
+  '💎'  // Precious Gem
+];
 
 const LEARNING_PATHS = [
   { id: 'standard', name: 'Standard Path', description: 'Start from Al-Fatihah, move forward.', surah: 1, ayah: 1, direction: 'forwards' },
