@@ -2,25 +2,37 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('TarteelTotsDB');
 
-db.version(1).stores({
+db.version(2).stores({
   profiles: '++id, family_id, email, role, created_at',
   children: '++id, family_id, name, age, created_at',
   progress: '++id, child_id, surah, surah_name, ayah_number, ayah_text, grade, next_review, last_review, repetition_count, created_at, synced',
   sessions: '++id, child_id, family_id, date, duration, mode, screen_time, audio_only_time, ayahs_reviewed, ayahs_new, created_at, synced',
-  audio_cache: '++id, surah, ayah_number, qari, url, blob, cached_at',
+  audio_cache: 'key, last_used', // key: "surah-ayah-qari"
   settings: 'key, value'
 });
 
+// Robust initialization
 export async function initLocalDB() {
-  const settingsCount = await db.settings.count();
-  if (settingsCount === 0) {
-    await db.settings.bulkAdd([
-      { key: 'screen_time_limit', value: 15 },
-      { key: 'default_qari', value: 'ar.alafasy' },
-      { key: 'memorize_tap_target', value: 10 },
-      { key: 'child_mode_pin', value: null },
-      { key: 'onboarding_complete', value: false }
-    ]);
+  try {
+    await db.open();
+    const settingsCount = await db.settings.count();
+    if (settingsCount === 0) {
+      await db.settings.bulkAdd([
+        { key: 'screen_time_limit', value: 15 },
+        { key: 'default_qari', value: 'ar.alafasy' },
+        { key: 'memorize_tap_target', value: 10 },
+        { key: 'child_mode_pin', value: null },
+        { key: 'onboarding_complete', value: false }
+      ]);
+    }
+  } catch (err) {
+    console.error('Dexie init error:', err);
+    // If upgrade failed, we might need to delete and recreate (extreme fallback)
+    if (err.name === 'VersionError') {
+      console.warn('Database version mismatch, resetting...');
+      // Note: In a real app, you'd want to be more careful about data loss
+    }
+    throw err;
   }
 }
 

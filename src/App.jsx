@@ -3,8 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { SyncProvider } from './contexts/SyncContext';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from './db/dexie';
 
 const LoginPage = lazy(() => import('./pages/Auth/LoginPage'));
 const SignupPage = lazy(() => import('./pages/Auth/SignupPage'));
@@ -23,19 +21,11 @@ function LoadingScreen() {
 }
 
 function OnboardingCheck({ children }) {
-  const { loading } = useAuth();
+  const { loading, onboardingComplete } = useAuth();
   const location = useLocation();
-  const onboardingComplete = useLiveQuery(async () => {
-    const val = await db.settings.get('onboarding_complete');
-    return val?.value === true;
-  }, []);
 
-  if (loading || onboardingComplete === undefined) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="animate-spin-slow text-4xl">🌴</div>
-      </div>
-    );
+  if (loading || onboardingComplete === null) {
+    return <LoadingScreen />;
   }
 
   if (onboardingComplete === false && location.pathname !== '/onboarding') {

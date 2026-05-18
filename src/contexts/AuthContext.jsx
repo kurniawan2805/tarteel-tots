@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../db/supabase';
-import { initLocalDB } from '../db/dexie';
+import { initLocalDB, db } from '../db/dexie';
 import { AuthContext } from './AuthContextInstance';
 
 export function AuthProvider({ children }) {
@@ -9,6 +9,7 @@ export function AuthProvider({ children }) {
   const [familyId, setFamilyId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLocalMode, setIsLocalMode] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(null);
 
   const loadProfile = useCallback(async (userId) => {
     if (!supabase) {
@@ -24,6 +25,16 @@ export function AuthProvider({ children }) {
     if (data) {
       setProfile(data);
       setFamilyId(data.family_id);
+    }
+  }, []);
+
+  const checkOnboarding = useCallback(async () => {
+    try {
+      const val = await db.settings.get('onboarding_complete');
+      setOnboardingComplete(val?.value === true);
+    } catch (err) {
+      console.error('Check onboarding failed:', err);
+      setOnboardingComplete(false);
     }
   }, []);
 
@@ -47,9 +58,21 @@ export function AuthProvider({ children }) {
     let mounted = true;
     
     async function init() {
-      await initLocalDB();
-      if (mounted) {
-        await checkLocalSession();
+      try {
+        console.log('Initializing local database...');
+        await initLocalDB();
+        console.log('Local database ready.');
+        
+        if (mounted) {
+          await checkOnboarding();
+          await checkLocalSession();
+        }
+      } catch (err) {
+        console.error('Initialization failed:', err);
+        if (mounted) {
+          setLoading(false);
+          setIsLocalMode(true); // Fallback to local mode
+        }
       }
     }
     
@@ -78,7 +101,7 @@ export function AuthProvider({ children }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [checkLocalSession, loadProfile]);
+  }, [checkLocalSession, loadProfile, checkOnboarding]);
 
   async function loginWithEmail(email, password) {
     if (!supabase) throw new Error('Supabase not configured');
@@ -152,8 +175,9 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, familyId, loading, isLocalMode,
-      loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout
+      user, profile, familyId, loading, isLocalMode, onboardingComplete,
+      loginWithEmail, signupWithEmail, joinFamily, startLocalMode, logout,
+      refreshOnboarding: checkOnboarding
     }}>
       {children}
     </AuthContext.Provider>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AudioLoopEngine, playChime, playWordAudio } from '../../utils/audioEngine';
 import { useScreenTime } from '../../hooks/useScreenTime';
+import { useAudioPreload } from '../../hooks/useAudioPreload';
 
 export default function ChildMode({ 
   ayahQueue, 
@@ -16,6 +17,7 @@ export default function ChildMode({
   const [isPlaying, setIsPlaying] = useState(false);
   const engine = useRef(new AudioLoopEngine());
   const { screenTimeFormatted, isDimmed, warningShown, start, stop } = useScreenTime(screenTimeLimit);
+  const { status, isCurrentReady } = useAudioPreload(ayahQueue, currentAyahIndex);
 
   useEffect(() => {
     start();
@@ -128,7 +130,6 @@ export default function ChildMode({
   };
 
   const handlePlayFullAyah = (ayah) => {
-    // Fallback play if engine doesn't expose it or just use a new Audio
     import('../../utils/audioEngine').then(({ getAudioUrl }) => {
       const audioUrl = getAudioUrl(ayah.surah, ayah.ayah_number, ayah.qari);
       const audio = new Audio(audioUrl);
@@ -170,6 +171,15 @@ export default function ChildMode({
           ⏰ Almost time for Radio Mode!
         </div>
       )}
+
+      {/* Offline Status Indicator */}
+      <div className="absolute top-4 right-4 z-20">
+        {status === 'loading' && !isCurrentReady ? (
+          <span className="text-[10px] text-text-muted animate-pulse bg-white bg-opacity-50 px-2 py-1 rounded-full shadow-sm">⏳ Loading...</span>
+        ) : (
+          <span className="text-[10px] text-success opacity-50 bg-white bg-opacity-50 px-2 py-1 rounded-full shadow-sm">✓ Ready</span>
+        )}
+      </div>
 
       <button
         onClick={handleExit}

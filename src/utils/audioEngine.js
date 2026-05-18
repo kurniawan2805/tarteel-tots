@@ -1,3 +1,5 @@
+import { getOrFetchAudioBlob } from './audioCache';
+
 const QARI_BASE_URL = 'https://cdn.islamic.network/quran/audio/128';
 const WORDS_AUDIO_URL = 'https://audios.quranwbw.com/words';
 
@@ -100,11 +102,11 @@ export class AudioLoopEngine {
     this.isPlayingCurrent = false;
     this.retryTimeout = null;
     this.stopAfterAyah = false;
+    this.currentObjectURL = null;
 
     // Bind handlers for consistent `this`
     this.audio.onended = () => this.onAyahEnded();
     this.audio.onerror = () => {
-      // Attempt a debounce retry when errors happen
       this.isPlayingCurrent = false;
       this.debounceRetry();
     };
@@ -146,19 +148,39 @@ export class AudioLoopEngine {
     }
 
     const ayah = this.currentQueue[this.currentIndex];
-    const url = getAudioUrl(ayah.surah, ayah.ayah_number, ayah.qari);
-
-    this.audio.src = url;
-
+    
     try {
+      // 1. Get Blob (Fast if cached)
+      const blob = await getOrFetchAudioBlob(ayah.surah, ayah.ayah_number, ayah.qari);
+      
+      // 2. Cleanup previous ObjectURL
+      if (this.currentObjectURL) {
+        URL.revokeObjectURL(this.currentObjectURL);
+      }
+
+      // 3. Create fresh URL
+      this.currentObjectURL = URL.createObjectURL(blob);
+      this.audio.src = this.currentObjectURL;
+      
       await this.audio.play();
       this.isPlaying = true;
       this.isPaused = false;
       this.isPlayingCurrent = false;
-    } catch (e) {
-      console.error('Playback failed:', e);
-      this.isPlayingCurrent = false;
-      this.debounceRetry();
+    } catch (err) {
+      console.warn('Cached playback failed, falling back to network:', err);
+      const url = getAudioUrl(ayah.surah, ayah.ayah_number, ayah.qari);
+      this.audio.src = url;
+      
+      try {
+        await this.audio.play();
+        this.isPlaying = true;
+        this.isPaused = false;
+        this.isPlayingCurrent = false;
+      } catch (e) {
+        console.error('Network playback fallback failed:', e);
+        this.isPlayingCurrent = false;
+        this.debounceRetry();
+      }
     }
   }
 
@@ -197,7 +219,6 @@ export class AudioLoopEngine {
       this.onQueueComplete?.();
     } else {
       this.isPlayingCurrent = false;
-      // Play next ayah after small tick to avoid deep synchronous recursion
       setTimeout(() => {
         this.playCurrent();
       }, 50);
@@ -222,6 +243,10 @@ export class AudioLoopEngine {
       this.retryTimeout = null;
     }
     this.audio.pause();
+    if (this.currentObjectURL) {
+      URL.revokeObjectURL(this.currentObjectURL);
+      this.currentObjectURL = null;
+    }
     try { 
       this.audio.currentTime = 0; 
     } catch (err) {
@@ -249,10 +274,8 @@ export class AudioLoopEngine {
 
 export async function cacheAudio(surah, ayah, qari = 'ar.alafasy') {
   try {
-    const url = getAudioUrl(surah, ayah, qari);
-    const response = await fetch(url);
-    const blob = await response.blob();
-    return { url, blob, success: true };
+    const blob = await getOrFetchAudioBlob(surah, ayah, qari);
+    return { blob, success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }

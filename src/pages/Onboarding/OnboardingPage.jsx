@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { db } from '../../db/dexie';
 import { useNavigate } from 'react-router-dom';
 import { quranMetaData } from '../../data/quranMeta';
+import { useAuth } from '../../hooks/useAuth';
 
 const AVATARS = ['👧', '👦', '🧒', '👶', '🧕', '👱‍♀️', '👱'];
 
@@ -13,6 +14,7 @@ const LEARNING_PATHS = [
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const { refreshOnboarding } = useAuth();
   const [step, setStep] = useState(1);
   const [children, setChildren] = useState([]);
   const [currentChild, setCurrentChild] = useState({
@@ -70,6 +72,7 @@ export default function OnboardingPage() {
 
   const handleFinish = async () => {
     await db.settings.put({ key: 'onboarding_complete', value: true });
+    await refreshOnboarding();
     navigate('/dashboard');
   };
 
