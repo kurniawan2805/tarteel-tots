@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import FamilyCodeQR from '../../components/FamilyCodeQR';
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -289,24 +290,11 @@ export default function SignupPage() {
           )}
 
           <div className="text-center">
-            <p className="text-sm text-text-muted mb-3">Family Code</p>
-            <div className="bg-primary bg-opacity-10 border-2 border-primary rounded-xl p-6 mb-6">
-              <code className="text-4xl font-mono font-bold text-primary tracking-widest">
-                {createdFamilyCode}
-              </code>
-            </div>
+            <p className="text-sm text-text-muted mb-4">Family Code</p>
             
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(createdFamilyCode);
-                alert('Code copied to clipboard!');
-              }}
-              className="btn-primary w-full mb-3"
-            >
-              📋 Copy Code
-            </button>
-
-            <p className="text-xs text-text-muted mb-6">
+            <FamilyCodeQR familyCode={createdFamilyCode} />
+            
+            <p className="text-xs text-text-muted mt-6 mb-6">
               They can use this code to join your family and see {activeFamily?.display_name || 'the family'} space.
             </p>
 
