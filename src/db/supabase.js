@@ -239,6 +239,57 @@ export async function regenerateFamilyCode(familyId) {
   return data;
 }
 
+export async function resolveGradeConflict(gradeHistoryId, progressId) {
+  if (!supabase) return null;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  // Get the conflicting grade entry
+  const { data: gradeEntry, error: fetchError } = await supabase
+    .from('grade_history')
+    .select('*')
+    .eq('id', gradeHistoryId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  // Update progress with this grade
+  const { error: updateError } = await supabase
+    .from('progress')
+    .update({
+      lastGrade: gradeEntry.grade,
+      graded_by: gradeEntry.graded_by,
+      grade_timestamp: new Date().toISOString()
+    })
+    .eq('id', progressId);
+
+  if (updateError) throw updateError;
+
+  // Mark this grade as active and record who resolved the conflict
+  const { error: resolveError } = await supabase
+    .from('grade_history')
+    .update({
+      is_active: true,
+      resolved_by: session.user.id,
+      resolved_at: new Date().toISOString()
+    })
+    .eq('id', gradeHistoryId);
+
+  if (resolveError) throw resolveError;
+
+  // Mark other conflicting grades as inactive
+  const { error: deactivateError } = await supabase
+    .from('grade_history')
+    .update({ is_active: false })
+    .eq('progress_id', progressId)
+    .neq('id', gradeHistoryId);
+
+  if (deactivateError) throw deactivateError;
+
+  return { success: true };
+}
+
 export async function getMyMemberships() {
   if (!supabase) return [];
   const { data, error } = await supabase
