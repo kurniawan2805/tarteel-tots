@@ -8,6 +8,10 @@ export function useInstallPrompt() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     return standalone && !isIOS;
   });
+  const [dismissCount, setDismissCount] = useState(() => {
+    const saved = localStorage.getItem('pwaPromptDismissCount');
+    return saved ? parseInt(saved, 10) : 0;
+  });
 
   useEffect(() => {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -19,11 +23,15 @@ export function useInstallPrompt() {
       setDeferredPrompt(e);
       
       // Show prompt after 10 seconds of using the app
-      const timer = setTimeout(() => {
-        setShowPrompt(true);
-      }, 10000);
+      // Only suppress on multiple consecutive dismissals (>3)
+      const shouldShow = dismissCount < 3;
+      if (shouldShow) {
+        const timer = setTimeout(() => {
+          setShowPrompt(true);
+        }, 10000);
 
-      return () => clearTimeout(timer);
+        return () => clearTimeout(timer);
+      }
     };
 
     const handleAppInstalled = () => {
@@ -31,6 +39,7 @@ export function useInstallPrompt() {
       setShowPrompt(false);
       setIsInstalled(true);
       localStorage.setItem('pwaInstalled', 'true');
+      localStorage.removeItem('pwaPromptDismissCount');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -40,7 +49,7 @@ export function useInstallPrompt() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [dismissCount]);
 
   const handleInstall = async () => {
     if (!deferredPrompt) return;
@@ -50,6 +59,7 @@ export function useInstallPrompt() {
     
     if (outcome === 'accepted') {
       setDeferredPrompt(null);
+      localStorage.removeItem('pwaPromptDismissCount');
     }
     
     setShowPrompt(false);
@@ -57,7 +67,10 @@ export function useInstallPrompt() {
 
   const handleDismiss = () => {
     setShowPrompt(false);
-    localStorage.setItem('pwaPromptDismissed', 'true');
+    // Soft approach: increment dismiss count (allow up to 3 re-prompts)
+    const newCount = dismissCount + 1;
+    setDismissCount(newCount);
+    localStorage.setItem('pwaPromptDismissCount', String(newCount));
   };
 
   return {
@@ -65,6 +78,7 @@ export function useInstallPrompt() {
     showPrompt,
     isInstalled,
     handleInstall,
-    handleDismiss
+    handleDismiss,
+    dismissCount
   };
 }
