@@ -172,17 +172,17 @@ export default function SignupPage() {
             <div className="space-y-4">
               <button
                 onClick={() => setFamilyChoice('create')}
-                className="w-full p-6 rounded-2xl border-2 border-primary bg-primary bg-opacity-5 text-left transition-all active:scale-[0.98]"
+                className="w-full p-6 rounded-2xl border-2 border-primary bg-primary bg-opacity-10 text-left transition-all active:scale-[0.98] hover:bg-opacity-15"
               >
-                <p className="text-lg font-bold text-primary mb-1">✨ Create New Family</p>
+                <p className="text-lg font-bold text-text mb-1">✨ Create New Family</p>
                 <p className="text-xs text-text-muted">Start fresh and invite others later.</p>
               </button>
               
               <button
                 onClick={() => setFamilyChoice('join')}
-                className="w-full p-6 rounded-2xl border-2 border-secondary bg-secondary bg-opacity-5 text-left transition-all active:scale-[0.98]"
+                className="w-full p-6 rounded-2xl border-2 border-secondary bg-secondary bg-opacity-10 text-left transition-all active:scale-[0.98] hover:bg-opacity-15"
               >
-                <p className="text-lg font-bold text-secondary mb-1">🤝 Join Family</p>
+                <p className="text-lg font-bold text-text mb-1">🤝 Join Family</p>
                 <p className="text-xs text-text-muted">Enter a code from another family member.</p>
               </button>
             </div>

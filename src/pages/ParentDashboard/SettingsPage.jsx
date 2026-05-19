@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
 import { useSync } from '../../hooks/useSync';
 import { useAuth } from '../../hooks/useAuth';
+import FamilyManagement from '../../components/FamilyManagement';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -140,6 +141,11 @@ export default function SettingsPage() {
               </div>
             </div>
           </section>
+        )}
+
+        {/* Family Management */}
+        {!isLocalMode && (
+          <FamilyManagement />
         )}
 
         {/* Status Card */}
