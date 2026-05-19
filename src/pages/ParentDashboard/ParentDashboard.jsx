@@ -10,6 +10,7 @@ import { quranMetaData } from '../../data/quranMeta';
 import { useCFR } from '../../hooks/useCFR';
 import GradeCard from '../../components/GradeCard';
 import RecentGradesWidget from '../../components/RecentGradesWidget';
+import ChildProfileModal from '../../components/ChildProfileModal';
 
 const QARI_NAMES = {
   'ar.alafasy': 'Mishary Alafasy',
@@ -33,6 +34,7 @@ export default function ParentDashboard() {
   const [selectedChild, setSelectedChild] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [isAddingManual, setIsAddingManual] = useState(false);
+  const [isEditingChild, setIsEditingChild] = useState(false);
   const [manualAddMode, setManualAddMode] = useState('single'); // 'single', 'range', 'surah'
   const [manualEntry, setManualEntry] = useState({ surah: 1, ayah: 1, endAyah: 1 });
   const [selectedSurahs, setSelectedSurahs] = useState([]); // Array of surah IDs for bulk add
@@ -154,6 +156,26 @@ export default function ParentDashboard() {
   const childStreak = selectedChild
     ? getStreakDays(sessions?.filter(s => s.child_id === selectedChild.id) || [])
     : 0;
+
+  const reportCardStats = useMemo(() => {
+    if (!selectedChild || !progress || !sessions) return { totalMemorized: 0, streak: 0, totalMinutes: 0 };
+    
+    const childProgress = progress.filter(p => p.child_id === selectedChild.id);
+    const childSessions = sessions.filter(s => s.child_id === selectedChild.id);
+    
+    // Total memorized is count of unique chunks they have a grade for
+    const totalMemorized = childProgress.length;
+    
+    // Total time in minutes
+    const totalSeconds = childSessions.reduce((acc, s) => acc + (s.duration || 0), 0);
+    const totalMinutes = Math.round(totalSeconds / 60);
+
+    return {
+      totalMemorized,
+      streak: childStreak,
+      totalMinutes
+    };
+  }, [selectedChild, progress, sessions, childStreak]);
 
   const handleManualAdd = async () => {
     if (!selectedChild) return;
@@ -314,11 +336,22 @@ export default function ParentDashboard() {
                 </div>
 
                 <div className="card">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-4xl">{selectedChild.avatar}</span>
-                    <div>
-                      <h3 className="text-lg font-bold text-text">{selectedChild.name}'s Garden</h3>
-                      <GardenProgress streak={childStreak} goal={selectedChild.daily_goal_minutes * 3} />
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-4xl">{selectedChild.avatar}</span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-bold text-text">{selectedChild.name}'s Garden</h3>
+                          <button
+                            onClick={() => setIsEditingChild(true)}
+                            className="p-1 hover:bg-bg-dark rounded-full transition-colors text-text-muted hover:text-primary"
+                            title="Edit Profile"
+                          >
+                            <span className="text-sm">✏️</span>
+                          </button>
+                        </div>
+                        <GardenProgress streak={childStreak} goal={selectedChild.daily_goal_minutes * 3} />
+                      </div>
                     </div>
                   </div>
                   <Garden streak={childStreak} size="lg" />
@@ -374,6 +407,37 @@ export default function ParentDashboard() {
 
         {activeTab === 'progress' && (
           <div className="card">
+            {/* Report Card Summary */}
+            {selectedChild && (
+              <div className="bg-primary bg-opacity-5 -mx-4 -mt-4 p-6 mb-6 border-b border-primary border-opacity-10 rounded-t-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-4xl">{selectedChild.avatar}</span>
+                  <div>
+                    <h2 className="text-xl font-bold text-text">{selectedChild.name}'s Report Card</h2>
+                    <p className="text-xs text-text-muted font-medium">Keep growing your garden! 🌴</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white p-3 rounded-2xl shadow-sm text-center">
+                    <span className="text-xl block mb-1">📖</span>
+                    <p className="text-lg font-black text-primary">{reportCardStats.totalMemorized}</p>
+                    <p className="text-[9px] font-bold text-text-muted uppercase">Memorized</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl shadow-sm text-center">
+                    <span className="text-xl block mb-1">🔥</span>
+                    <p className="text-lg font-black text-secondary">{reportCardStats.streak}d</p>
+                    <p className="text-[9px] font-bold text-text-muted uppercase">Streak</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl shadow-sm text-center">
+                    <span className="text-xl block mb-1">⏱️</span>
+                    <p className="text-lg font-black text-text">{reportCardStats.totalMinutes}m</p>
+                    <p className="text-[9px] font-bold text-text-muted uppercase">Total Time</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold text-text">Progress</h2>
               <button
@@ -706,6 +770,22 @@ export default function ParentDashboard() {
           ))}
         </div>
       </nav>
+
+      {isEditingChild && selectedChild && (
+        <ChildProfileModal
+          child={selectedChild}
+          onClose={() => setIsEditingChild(false)}
+          onUpdate={async () => {
+            const allChildren = await db.children.toArray();
+            const stillExists = allChildren.find(c => c.id === selectedChild.id);
+            if (stillExists) {
+              setSelectedChild(stillExists);
+            } else {
+              setSelectedChild(allChildren[0] || null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

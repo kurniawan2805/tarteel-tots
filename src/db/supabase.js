@@ -193,16 +193,12 @@ export async function createFamily(displayName) {
     .insert({ 
       display_name: displayName,
       family_code: familyCode
-    });
+    })
+    .select()
+    .single();
 
   if (error) throw error;
-  
-  // Don't select() back - RLS blocks it since membership doesn't exist yet
-  // Return the data we just inserted (without DB roundtrip)
-  return {
-    family_code: familyCode,
-    display_name: displayName
-  };
+  return data;
 }
 
 export async function createMembership(familyId, profileId, role = 'guardian', label = null) {

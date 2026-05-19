@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/dexie';
 
 export default function ConflictResolutionModal({ conflicts, onResolve, onClose }) {
-  const { profile } = useAuth();
+  const { } = useAuth();
   const [resolving, setResolving] = useState(null);
   
   const profiles = useLiveQuery(() => db.profiles.toArray(), []);
