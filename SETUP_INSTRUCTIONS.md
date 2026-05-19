@@ -6,6 +6,9 @@ The "Join Family" button wasn't visible on Step 2 of signup. Root cause: RLS (Ro
 ## Solution
 Apply the RLS policies migration manually via Supabase dashboard:
 
+### Prerequisites
+Make sure migration `003_membership_roles.sql` has been applied first (it creates the `memberships` table that the final policy depends on).
+
 ### Steps:
 
 1. **Open your Supabase project**
@@ -33,10 +36,10 @@ Apply the RLS policies migration manually via Supabase dashboard:
 ## What the Migration Does
 
 Adds RLS policies to the `profiles` table that allow:
-- Users to insert their own profile during signup
+- Users to insert their own profile during signup (**CRITICAL for signup to work**)
 - Users to view their own profile
 - Users to update their own profile  
-- Users to view other family members' profiles
+- Users to view other family members' profiles (requires memberships table)
 
 ## Verification
 
@@ -46,6 +49,13 @@ After applying migration, you should see:
 - ✅ Create New Family button is visible
 - ✅ Family join flow works end-to-end
 
+## Troubleshooting
+
+**Error: relation "memberships" does not exist**
+- Run migration `003_membership_roles.sql` first
+- Then retry migration `008_profile_rls_policies.sql`
+
 ## Future
 
 In production, migrations should be applied automatically via Supabase migration system or CLI. For local dev, manual application via dashboard is required.
+

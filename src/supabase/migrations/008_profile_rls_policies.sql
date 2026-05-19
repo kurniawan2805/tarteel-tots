@@ -11,6 +11,7 @@ DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can view profiles in their family" ON profiles;
 
 -- Allow users to insert their own profile (during signup)
+-- This is the CRITICAL policy needed for signup to work
 CREATE POLICY "Users can insert their own profile"
 ON profiles FOR INSERT
 WITH CHECK (auth.uid() = id);
@@ -26,9 +27,14 @@ ON profiles FOR UPDATE
 USING (auth.uid() = id)
 WITH CHECK (auth.uid() = id);
 
+-- NOTE: The cross-table policy below requires memberships table to exist
+-- If running before migration 003 (memberships_roles.sql), comment this out
 -- Allow users to view profiles in their family (for member display)
 CREATE POLICY "Users can view profiles in their family"
 ON profiles FOR SELECT
-USING (family_id IN (SELECT family_id FROM memberships WHERE profile_id = auth.uid()));
-
+USING (
+  family_id IS NOT NULL AND family_id IN (
+    SELECT family_id FROM memberships WHERE profile_id = auth.uid()
+  )
+);
 
