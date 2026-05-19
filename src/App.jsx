@@ -54,8 +54,9 @@ function ProtectedRoute({ children }) {
   return <OnboardingCheck>{children}</OnboardingCheck>;
 }
 
-function PublicRoute({ children }) {
+function PublicRoute({ children, allowAfterSignup = false }) {
   const { user, isLocalMode, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -65,7 +66,8 @@ function PublicRoute({ children }) {
     );
   }
 
-  if (user || isLocalMode) {
+  // Allow /signup to proceed after user signup (Step 2: Create/Join family)
+  if ((user || isLocalMode) && !(allowAfterSignup && location.pathname === '/signup')) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -87,7 +89,7 @@ function AppRoutes() {
         <Route
           path="/signup"
           element={
-            <PublicRoute>
+            <PublicRoute allowAfterSignup={true}>
               <SignupPage />
             </PublicRoute>
           }
