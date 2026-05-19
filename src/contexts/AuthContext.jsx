@@ -143,7 +143,7 @@ export function AuthProvider({ children }) {
     if (data.user) {
       // Create profile ONLY. Family linking is now a second step.
       const { data: profileData, error: pError } = await supabase.from('profiles').insert({
-        user_id: data.user.id,
+        id: data.user.id,
         email,
         full_name: fullName,
         role
