@@ -2,10 +2,38 @@
 -- Ensures users can only access data from their own family
 
 -- ============================================================================
--- 1. FAMILIES TABLE - Users can only see/access their own family
+-- DROP ALL EXISTING POLICIES (clean slate before re-creating)
 -- ============================================================================
 DROP POLICY IF EXISTS "Users see family_code and expires_at" ON families;
 DROP POLICY IF EXISTS "Users can select own family" ON families;
+DROP POLICY IF EXISTS "Users can update own family" ON families;
+
+DROP POLICY IF EXISTS "Users can view family children" ON children;
+DROP POLICY IF EXISTS "Users can insert children to their family" ON children;
+DROP POLICY IF EXISTS "Users can update family children" ON children;
+DROP POLICY IF EXISTS "Users can delete family children" ON children;
+DROP POLICY IF EXISTS "Users can manage family children" ON children;
+
+DROP POLICY IF EXISTS "Users can view progress for their family children" ON progress;
+DROP POLICY IF EXISTS "Users can insert progress for their family children" ON progress;
+DROP POLICY IF EXISTS "Users can update progress for their family children" ON progress;
+DROP POLICY IF EXISTS "Users can manage family progress" ON progress;
+
+DROP POLICY IF EXISTS "Users can view family sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can insert family sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can update family sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can view sessions" ON sessions;
+DROP POLICY IF EXISTS "Users can manage sessions" ON sessions;
+
+DROP POLICY IF EXISTS "Users can view garden state for their family" ON garden_state;
+DROP POLICY IF EXISTS "Users can update garden state for their family" ON garden_state;
+DROP POLICY IF EXISTS "Users can insert garden state for their family" ON garden_state;
+DROP POLICY IF EXISTS "Users can view garden state" ON garden_state;
+DROP POLICY IF EXISTS "Users can manage garden state" ON garden_state;
+
+-- ============================================================================
+-- 1. FAMILIES TABLE - Users can only see/access their own family
+-- ============================================================================
 
 CREATE POLICY "Users can select own family"
 ON families FOR SELECT
