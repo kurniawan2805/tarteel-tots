@@ -21,12 +21,14 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
       // Create Account button
       await page.click('button:has-text("Create Account")');
       
-      // Step 2: Family choice - wait for step to complete
-      await page.waitForURL(/\/signup|\/dashboard|\/onboarding/, { timeout: 15000 });
+      // Wait for Step 2: Family choice (should appear on /signup)
+      // Give it longer to render
+      const setupSpace = page.locator('text=Setup Your Space');
+      await setupSpace.waitFor({ timeout: 15000 }).catch(() => null);
       
-      // Check if we landed on Step 2 (Setup Your Space)
-      const setupSpace = page.locator('text=Setup Your Space').first();
-      if (await setupSpace.isVisible({ timeout: 5000 }).catch(() => false)) {
+      const isSetupVisible = await setupSpace.isVisible({ timeout: 5000 }).catch(() => false);
+      
+      if (isSetupVisible) {
         // Proceed with family creation
         await page.click('button:has-text("Create New Family")');
         
@@ -37,7 +39,8 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
         await page.click('button:has-text("Create Family Space")');
         
         // Step 2.5: Should see family code
-        await page.waitForSelector('text=Family Space Created', { timeout: 10000 }).catch(() => null);
+        const familyCreated = page.locator('text=Family Space Created');
+        await familyCreated.waitFor({ timeout: 10000 }).catch(() => null);
         
         // Verify family code displayed
         const code = page.locator('code').first();
@@ -50,12 +53,13 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
           // Click continue
           await page.click('button:has-text("Continue")');
           
-          // Should redirect to dashboard
+          // Should redirect to dashboard/onboarding
           await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 10000 });
+        } else {
+          expect(isCodeVisible).toBeTruthy();
         }
       } else {
-        // Auth likely already happened, check dashboard/onboarding
-        await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 10000 });
+        expect(isSetupVisible).toBeTruthy();
       }
     });
 

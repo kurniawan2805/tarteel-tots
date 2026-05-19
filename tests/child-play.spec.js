@@ -38,7 +38,8 @@ test.describe('Child Play Mode', () => {
       await greenBtn.click();
       // verify state change (highlight, disable, etc)
       // adjust based on actual behavior
-      await expect(greenBtn).toHaveAttribute('aria-pressed', 'true').or(greenBtn).toHaveAttribute('disabled'));
+      const isPressedOrDisabled = await greenBtn.getAttribute('aria-pressed') === 'true' || await greenBtn.isDisabled();
+      expect(isPressedOrDisabled).toBeTruthy();
     }
   });
 
