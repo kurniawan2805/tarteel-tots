@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { SyncProvider } from './contexts/SyncContext';
 import InstallPrompt from './components/common/InstallPrompt';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 const LoginPage = lazy(() => import('./pages/Auth/LoginPage'));
 const SignupPage = lazy(() => import('./pages/Auth/SignupPage'));
@@ -144,12 +145,14 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <SyncProvider>
-          <AppRoutes />
-          <InstallPrompt />
-        </SyncProvider>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <SyncProvider>
+            <AppRoutes />
+            <InstallPrompt />
+          </SyncProvider>
+        </AuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

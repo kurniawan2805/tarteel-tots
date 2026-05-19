@@ -96,7 +96,7 @@ export default function OnboardingPage() {
             </p>
             <button
               onClick={() => setStep(2)}
-              className="btn-primary text-lg px-12 py-4"
+              className="btn-primary text-lg px-12 py-4 mx-auto"
             >
               Get Started
             </button>
@@ -268,7 +268,7 @@ export default function OnboardingPage() {
             </p>
             <button
               onClick={handleFinish}
-              className="btn-primary text-lg px-12 py-4"
+              className="btn-primary text-lg px-12 py-4 mx-auto"
             >
               Start Learning
             </button>

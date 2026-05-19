@@ -20,12 +20,11 @@ export function useAudioPreload(ayahQueue, currentIndex) {
       const toLoad = ayahQueue.slice(currentIndex, currentIndex + windowSize);
       
       let successCount = 0;
-      let newLoadedKeys = new Set(loadedKeys);
-      let changed = false;
+      let newKeysFound = [];
       
       for (const ayah of toLoad) {
         const key = getAyahKey(ayah.surah, ayah.ayah_number, ayah.qari);
-        if (loadedKeys.has(key) || newLoadedKeys.has(key)) {
+        if (loadedKeys.has(key)) {
           successCount++;
           continue;
         }
@@ -33,9 +32,8 @@ export function useAudioPreload(ayahQueue, currentIndex) {
         try {
           await getOrFetchAudioBlob(ayah.surah, ayah.ayah_number, ayah.qari);
           if (mounted) {
-            newLoadedKeys.add(key);
+            newKeysFound.push(key);
             successCount++;
-            changed = true;
           }
         } catch (err) {
           console.warn(`Preload failed for ${key}:`, err);
@@ -43,10 +41,10 @@ export function useAudioPreload(ayahQueue, currentIndex) {
       }
 
       if (mounted) {
-        if (changed) {
+        if (newKeysFound.length > 0) {
           setLoadedKeys(prev => {
             const updated = new Set(prev);
-            newLoadedKeys.forEach(k => updated.add(k));
+            newKeysFound.forEach(k => updated.add(k));
             return updated;
           });
         }
@@ -62,7 +60,7 @@ export function useAudioPreload(ayahQueue, currentIndex) {
     return () => {
       mounted = false;
     };
-  }, [ayahQueue, currentIndex, loadedKeys]); // Added loadedKeys to dependencies
+  }, [ayahQueue, currentIndex]); // Removed loadedKeys from dependencies
 
   const currentAyah = ayahQueue?.[currentIndex];
   const isCurrentReady = currentAyah 

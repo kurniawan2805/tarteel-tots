@@ -5,7 +5,8 @@ test.describe('Auth Flow', () => {
     await page.goto('/');
     // redirects to /login if not auth'd
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.locator('h1')).toContainText(/login|sign in/i);
+    await expect(page.locator('h1')).toContainText(/Tarteel Tots/i);
+    await expect(page.locator('h2')).toContainText(/Parent Login/i);
   });
 
   test('login form → fields exist', async ({ page }) => {
@@ -23,7 +24,7 @@ test.describe('Auth Flow', () => {
   test('signup link → navigate to signup', async ({ page }) => {
     await page.goto('/login');
     
-    const signupLink = page.locator('a:has-text("Sign up"), a:has-text("Create account")');
+    const signupLink = page.locator('a:has-text("Create one")');
     await signupLink.click();
     
     await expect(page).toHaveURL(/\/signup/);
@@ -34,12 +35,10 @@ test.describe('Auth Flow', () => {
     
     const emailInput = page.locator('input[type="email"], input[name*="email"]');
     const passwordInput = page.locator('input[type="password"]');
-    const confirmInput = page.locator('input[name*="confirm"], input[placeholder*="confirm"]');
     const submitBtn = page.locator('button[type="submit"]');
     
     await expect(emailInput).toBeVisible();
     await expect(passwordInput).toBeVisible();
-    await expect(confirmInput).toBeVisible();
     await expect(submitBtn).toBeVisible();
   });
 

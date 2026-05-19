@@ -20,12 +20,28 @@ const QARI_NAMES = {
 
 export default function ParentDashboard() {
   const navigate = useNavigate();
-  const { logout, isLocalMode } = useAuth();
+  const { logout, isLocalMode, familyId } = useAuth();
   const { online, syncing, lastSync, saveProgress } = useSync();
 
-  const children = useLiveQuery(() => db.children.toArray(), []);
-  const sessions = useLiveQuery(() => db.sessions.toArray(), []);
-  const progress = useLiveQuery(() => db.progress.toArray(), []);
+  const children = useLiveQuery(() => {
+    if (isLocalMode) return db.children.toArray();
+    if (!familyId) return [];
+    return db.children.where('family_id').equals(familyId).toArray();
+  }, [isLocalMode, familyId]);
+
+  const sessions = useLiveQuery(() => {
+    if (isLocalMode) return db.sessions.toArray();
+    if (!familyId) return [];
+    return db.sessions.where('family_id').equals(familyId).toArray();
+  }, [isLocalMode, familyId]);
+
+  const progress = useLiveQuery(async () => {
+    if (isLocalMode) return db.progress.toArray();
+    if (!familyId) return [];
+    const myChildren = await db.children.where('family_id').equals(familyId).toArray();
+    const childIds = myChildren.map(c => c.id);
+    return db.progress.where('child_id').anyOf(childIds).toArray();
+  }, [isLocalMode, familyId]);
   const settings = useLiveQuery(async () => {
     const items = await db.settings.toArray();
     return Object.fromEntries(items.map(s => [s.key, s.value]));

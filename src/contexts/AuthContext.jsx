@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase, findFamilyByCode, createFamily, createMembership, regenerateFamilyCode } from '../db/supabase';
-import { initLocalDB, db } from '../db/dexie';
+import { initLocalDB, db, clearLocalData } from '../db/dexie';
 import { AuthContext } from './AuthContextInstance';
 
 export function AuthProvider({ children }) {
@@ -216,6 +216,7 @@ export function AuthProvider({ children }) {
     if (supabase) {
       await supabase.auth.signOut();
     }
+    await clearLocalData();
     setUser(null);
     setProfile(null);
     setFamilyId(null);

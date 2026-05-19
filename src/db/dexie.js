@@ -18,7 +18,7 @@ export async function initLocalDB() {
 }
 
 db.on('populate', () => {
-  db.settings.bulkAdd([
+  return db.settings.bulkAdd([
     { key: 'default_qari', value: 'ar.alafasy' },
     { key: 'screen_time_limit', value: 15 },
     { key: 'memorize_tap_target', value: 10 },
@@ -27,11 +27,14 @@ db.on('populate', () => {
 });
 
 export async function clearLocalData() {
-  await db.profiles.clear();
-  await db.children.clear();
-  await db.progress.clear();
-  await db.sessions.clear();
-  await db.settings.clear();
+  await Promise.all([
+    db.profiles.clear(),
+    db.children.clear(),
+    db.progress.clear(),
+    db.sessions.clear(),
+    db.events.clear(),
+    db.grade_history.clear()
+  ]);
 }
 
 db.exportLocalData = async () => {

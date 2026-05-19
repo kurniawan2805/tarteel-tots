@@ -264,7 +264,7 @@ export default function SignupPage() {
 
         <button
           onClick={() => navigate('/dashboard')}
-          className="btn-primary px-12 py-4 text-lg"
+          className="btn-primary px-12 py-4 text-lg mx-auto"
         >
           Go to Dashboard
         </button>

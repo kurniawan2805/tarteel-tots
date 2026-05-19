@@ -157,7 +157,7 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: var(--shadow-md);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
@@ -179,7 +179,7 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: var(--shadow-md);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
