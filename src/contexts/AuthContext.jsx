@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', userId)
+        .eq('id', userId)
         .single();
 
       if (error) throw error;
@@ -142,15 +142,27 @@ export function AuthProvider({ children }) {
 
     if (data.user) {
       // Create profile ONLY. Family linking is now a second step.
-      const { data: profileData, error: pError } = await supabase.from('profiles').insert({
+      const { error: pError } = await supabase.from('profiles').insert({
         id: data.user.id,
         email,
         full_name: fullName,
         role
-      }).select().single();
+      });
       
-      if (pError) throw pError;
-      setProfile(profileData);
+      if (pError) {
+        console.error('Profile insert error:', pError);
+        throw pError;
+      }
+      
+      // Set profile from signup data directly (avoid RLS issues with .select())
+      setProfile({
+        id: data.user.id,
+        email,
+        full_name: fullName,
+        role,
+        family_id: null,
+        created_at: new Date().toISOString()
+      });
     }
     return data;
   }, []);
