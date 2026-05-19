@@ -9,6 +9,7 @@ import Garden, { GardenProgress } from '../../components/Garden/Garden';
 import { quranMetaData } from '../../data/quranMeta';
 import { useCFR } from '../../hooks/useCFR';
 import GradeCard from '../../components/GradeCard';
+import RecentGradesWidget from '../../components/RecentGradesWidget';
 
 const QARI_NAMES = {
   'ar.alafasy': 'Mishary Alafasy',
@@ -268,6 +269,9 @@ export default function ParentDashboard() {
 
             {selectedChild && (
               <div className="space-y-4">
+                {/* Recent Grades Widget */}
+                <RecentGradesWidget childId={selectedChild.id} limit={5} />
+
                 {/* 3 Garden Visit Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {suggestions.length > 0 ? (
