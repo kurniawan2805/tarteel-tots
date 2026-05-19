@@ -8,6 +8,7 @@ import { getStreakDays, CFR_LEVELS, getSurahChunks } from '../../utils/spacedRep
 import Garden, { GardenProgress } from '../../components/Garden/Garden';
 import { quranMetaData } from '../../data/quranMeta';
 import { useCFR } from '../../hooks/useCFR';
+import GradeCard from '../../components/GradeCard';
 
 const QARI_NAMES = {
   'ar.alafasy': 'Mishary Alafasy',
@@ -96,11 +97,14 @@ export default function ParentDashboard() {
           const ranges = chunks.map(c => {
             const chunkMeta = allChunks.find(ac => ac.id === c.chunkId);
             return {
+              progressId: c.id,
               surah: c.surah,
               surah_name: surahMeta?.transliteration || `Surah ${c.surah}`,
               start: chunkMeta?.start || 1,
               end: chunkMeta?.end || 1,
-              grade: c.lastGrade
+              grade: c.lastGrade,
+              chunkId: c.chunkId,
+              lastReviewed: c.lastReviewed
             };
           }).sort((a, b) => (a.start || 0) - (b.start || 0));
 
@@ -611,27 +615,15 @@ export default function ParentDashboard() {
                           {group.surahGroups.map((surahGroup) => (
                             <div key={surahGroup.surahId} className="space-y-2">
                               {surahGroup.ranges.map((range, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-4 bg-bg-dark rounded-xl border border-white shadow-sm">
-                                  <div>
-                                    <p className="text-sm font-bold text-text">
-                                      {range.surah_name}
-                                    </p>
-                                    <p className="text-xs text-text-muted">
-                                      {range.start === range.end 
-                                        ? `Ayah ${range.start}` 
-                                        : `Ayahs ${range.start} – ${range.end}`}
-                                    </p>
-                                  </div>
-                                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold text-white shadow-sm ${
-                                    range.grade === 'happy' ? 'bg-success' :
-                                    range.grade === 'okay' ? 'bg-warning' :
-                                    'bg-danger'
-                                  }`}>
-                                    {range.grade === 'happy' ? 'HAPPY' :
-                                     range.grade === 'okay' ? 'OKAY' :
-                                     'TRY AGAIN'}
-                                  </span>
-                                </div>
+                                <GradeCard
+                                  key={idx}
+                                  progressId={range.progressId}
+                                  childId={selectedChild.id}
+                                  surah={range.surah}
+                                  chunkId={range.chunkId}
+                                  lastGrade={range.grade}
+                                  lastReviewed={range.lastReviewed}
+                                />
                               ))}
                             </div>
                           ))}

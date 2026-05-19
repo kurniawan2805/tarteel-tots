@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useGradeHistory } from '../../hooks/useGradeHistory';
-import { getGradeEmoji, getGradeLabel } from '../../utils/spacedRepetition';
+import { useGradeHistory } from '../hooks/useGradeHistory';
+import { getGradeEmoji, getGradeLabel } from '../utils/spacedRepetition';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db/dexie';
+import { db } from '../db/dexie';
 
 export default function GradeCard({ progressId, childId, surah, chunkId, lastGrade, lastReviewed }) {
   const [showHistory, setShowHistory] = useState(false);
