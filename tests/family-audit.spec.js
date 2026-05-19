@@ -5,61 +5,54 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
   test.describe('Family Creation Flow', () => {
     test('signup → create family → show family code', async ({ page }) => {
       await page.goto('/signup');
-      
-      // Wait for signup form to appear
       await page.waitForSelector('input[type="email"]', { timeout: 10000 });
       
-      // Step 1: Account creation
+      // Step 1
       const email = `parent1-${Date.now()}@test.com`;
       await page.fill('input[type="email"]', email);
       await page.fill('input[type="password"]', 'password123');
       await page.fill('input[placeholder="Your name"]', 'Mother One');
-      
-      // Role selection - click Mother
       await page.click('button:has-text("Mother")');
-      
-      // Create Account button
       await page.click('button:has-text("Create Account")');
       
-      // Wait for Step 2: Family choice (should appear on /signup)
-      // Give it longer to render
+      // Step 2: Wait for Setup Your Space
       const setupSpace = page.locator('text=Setup Your Space');
-      await setupSpace.waitFor({ timeout: 15000 }).catch(() => null);
+      await setupSpace.waitFor({ timeout: 15000 });
+      expect(await setupSpace.isVisible()).toBeTruthy();
       
-      const isSetupVisible = await setupSpace.isVisible({ timeout: 5000 }).catch(() => false);
+      // Click Create New Family
+      await page.click('button:has-text("Create New Family")');
       
-      if (isSetupVisible) {
-        // Proceed with family creation
-        await page.click('button:has-text("Create New Family")');
+      // Enter family name
+      const familyInput = page.locator('input[placeholder="e.g. The Ahmed Family"]');
+      await familyInput.waitFor({ timeout: 5000 });
+      await familyInput.fill('Test Family');
+      
+      // Click Create Family Space
+      await page.click('button:has-text("Create Family Space")');
+      
+      // Step 2.5: Wait for Family Space Created message
+      const familyCreated = page.locator('text=Family Space Created');
+      await familyCreated.waitFor({ timeout: 10000 }).catch(() => null);
+      
+      // If we see "Family Space Created", that means Step 2.5 rendered
+      const isStep25 = await familyCreated.isVisible({ timeout: 3000 }).catch(() => false);
+      
+      if (isStep25) {
+        // Look for family code display
+        const codeElement = page.locator('code').first();
+        expect(await codeElement.textContent()).toMatch(/^TT-[A-Z0-9]{4}$/);
         
-        // Enter family name
-        await page.fill('input[placeholder="e.g. The Ahmed Family"]', 'Test Family');
+        // Click Continue
+        await page.click('button:has-text("Continue to Dashboard")');
         
-        // Create Family Space button
-        await page.click('button:has-text("Create Family Space")');
-        
-        // Step 2.5: Should see family code
-        const familyCreated = page.locator('text=Family Space Created');
-        await familyCreated.waitFor({ timeout: 10000 }).catch(() => null);
-        
-        // Verify family code displayed
-        const code = page.locator('code').first();
-        const isCodeVisible = await code.isVisible({ timeout: 5000 }).catch(() => false);
-        
-        if (isCodeVisible) {
-          const codeText = await code.textContent();
-          expect(codeText).toMatch(/^TT-[A-Z0-9]{4}$/);
-          
-          // Click continue
-          await page.click('button:has-text("Continue")');
-          
-          // Should redirect to dashboard/onboarding
-          await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 10000 });
-        } else {
-          expect(isCodeVisible).toBeTruthy();
-        }
+        // Should redirect to dashboard/onboarding
+        await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 10000 });
       } else {
-        expect(isSetupVisible).toBeTruthy();
+        // If Step 2.5 didn't render, check page content for errors
+        const pageContent = await page.content();
+        console.log('Page did not reach Step 2.5. Page content snippet:', pageContent.substring(0, 500));
+        expect(isStep25).toBeTruthy();
       }
     });
 
