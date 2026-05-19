@@ -17,6 +17,7 @@ export default function SignupPage() {
   const [familyChoice, setFamilyChoice] = useState(null); // 'create' | 'join'
   const [familyName, setFamilyName] = useState('');
   const [familyCode, setFamilyCode] = useState('');
+  const [createdFamilyCode, setCreatedFamilyCode] = useState(''); // Show after creation
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -38,10 +39,11 @@ export default function SignupPage() {
     setLoading(true);
     setError('');
     try {
-      await initFamilySpace(familyName);
-      setStep(3);
+      const family = await initFamilySpace(familyName);
+      setCreatedFamilyCode(family.family_code);
+      setStep(2.5);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to create family');
     } finally {
       setLoading(false);
     }
@@ -265,6 +267,57 @@ export default function SignupPage() {
         >
           Go to Dashboard
         </button>
+      </div>
+    );
+  }
+
+  // Step 2.5: Show family code after creation (share with other parent)
+  if (step === 2.5) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6">
+        <div className="text-center mb-8">
+          <span className="text-6xl mb-4 block">🎁</span>
+          <h1 className="text-3xl font-bold text-text">Family Space Created!</h1>
+          <p className="text-text-muted mt-2">Share this code with your spouse or family members</p>
+        </div>
+
+        <div className="card w-full max-w-sm">
+          {error && (
+            <div className="bg-danger bg-opacity-10 text-danger p-3 rounded-lg mb-4 text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="text-center">
+            <p className="text-sm text-text-muted mb-3">Family Code</p>
+            <div className="bg-primary bg-opacity-10 border-2 border-primary rounded-xl p-6 mb-6">
+              <code className="text-4xl font-mono font-bold text-primary tracking-widest">
+                {createdFamilyCode}
+              </code>
+            </div>
+            
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(createdFamilyCode);
+                alert('Code copied to clipboard!');
+              }}
+              className="btn-primary w-full mb-3"
+            >
+              📋 Copy Code
+            </button>
+
+            <p className="text-xs text-text-muted mb-6">
+              They can use this code to join your family and see {activeFamily?.display_name || 'the family'} space.
+            </p>
+
+            <button
+              onClick={() => setStep(3)}
+              className="w-full py-3 bg-bg-dark text-text font-semibold rounded-lg hover:bg-text hover:text-bg transition-colors"
+            >
+              Continue to Dashboard
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

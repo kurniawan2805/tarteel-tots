@@ -18,20 +18,27 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
       await page.click('button:has-text("Create New Family")');
       
       // Enter family name
-      await page.fill('input[placeholder*="Family"]', 'Test Family');
-      await page.click('button:has-text("Create")');
+      await page.fill('input[placeholder*="Ahmed"]', 'Test Family');
+      await page.click('button:has-text("Create Family Space")');
       
-      // Step 3: Should see family code (or navigate to onboarding)
-      await page.waitForTimeout(1000);
-      const bodyText = await page.textContent('body');
+      // Step 2.5: Should see family code (NEW!)
+      await page.waitForSelector('text=Family Space Created', { timeout: 5000 });
       
-      // Verify either family code shown or child creation flow starts
-      expect(bodyText).toMatch(/code|child|onboarding|success/i);
+      // Verify family code displayed
+      const code = page.locator('code').first();
+      await expect(code).toBeVisible();
+      
+      const codeText = await code.textContent();
+      expect(codeText).toMatch(/^TT-[A-Z0-9]{4}$/);
+      
+      // Click continue
+      await page.click('button:has-text("Continue")');
+      
+      // Should redirect to dashboard
+      await page.waitForURL('/dashboard', { timeout: 5000 });
     });
 
     test('join family → enter code → add to existing family', async ({ page }) => {
-      // This requires 2 browsers - parent1 creates, parent2 joins
-      // Simplified: just verify join flow exists
       await page.goto('/signup');
       
       // Step 1: Create second account
@@ -45,17 +52,17 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
       await page.waitForSelector('text=Setup Your Space', { timeout: 5000 });
       await page.click('button:has-text("Join Family")');
       
-      // Enter family code (placeholder)
-      const codeInput = page.locator('input[placeholder*="code"], input[placeholder*="Code"]').first();
-      await codeInput.fill('ABC123');
+      // Enter family code (placeholder - will fail, but tests flow)
+      const codeInput = page.locator('input[placeholder*="TT"]').first();
+      await codeInput.fill('TT-XXXX');
       
-      // Try to join (will fail with invalid code, but tests flow)
-      await page.click('button:has-text(/join|enter|submit/i)');
+      // Try to join
+      await page.click('button:has-text("Join Space")');
       
-      // Should show error or success
-      await page.waitForTimeout(500);
+      // Should show error (invalid code)
+      await page.waitForTimeout(1000);
       const msg = await page.textContent('body');
-      expect(msg).toMatch(/not found|joined|error|code/i);
+      expect(msg).toMatch(/not found|error|check/i);
     });
   });
 
@@ -208,24 +215,25 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
     test('family code valid/invalid handling', async ({ page }) => {
       await page.goto('/signup');
       
-      // Click "Create Account" → "Join Family"
+      // Quick account creation
       await page.fill('input[type="email"]', `test-${Date.now()}@test.com`);
       await page.fill('input[type="password"]', 'pass123');
       await page.fill('input[placeholder*="name"]', 'Test User');
-      await page.click('button[type="submit"]');
+      await page.click('button:has-text("Create Account")');
       
       // Step 2: Try to join with invalid code
       await page.waitForSelector('text=Setup Your Space', { timeout: 5000 });
       await page.click('button:has-text("Join Family")');
       
-      const codeField = page.locator('input').filter({ placeholder: /code|Code/i }).first();
+      const codeField = page.locator('input[placeholder*="TT"]').first();
       await codeField.fill('INVALID_CODE_XYZ');
       
-      await page.click('button:has-text(/join|enter|submit/i)');
+      await page.click('button:has-text("Join Space")');
       
       // Should show error, not crash
       await page.waitForTimeout(500);
-      expect(page.locator('body')).toBeTruthy();
+      const error = page.locator('text=/not found|error|check/i');
+      await expect(error).toBeVisible({ timeout: 3000 });
     });
   });
 
