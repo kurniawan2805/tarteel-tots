@@ -290,6 +290,29 @@ export async function resolveGradeConflict(gradeHistoryId, progressId) {
   return { success: true };
 }
 
+export async function updateChildProfile(childId, updates) {
+  if (!supabase) return null;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  // Add updated_by to track who made the change
+  const updatePayload = {
+    ...updates,
+    updated_by: session.user.id
+  };
+
+  const { data, error } = await supabase
+    .from('children')
+    .update(updatePayload)
+    .eq('id', childId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getMyMemberships() {
   if (!supabase) return [];
   const { data, error } = await supabase
