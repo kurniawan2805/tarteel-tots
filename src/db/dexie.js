@@ -2,10 +2,11 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('TarteelTotsDB');
 
-db.version(4).stores({
+db.version(5).stores({
   profiles: '++id, family_id, email, role, created_at',
   children: '++id, family_id, name, age, created_at',
-  progress: '++id, child_id, surah, chunkId, level, lastReviewed, nextSuggested, lastGrade, favorite, created_at, synced',
+  progress: '++id, child_id, surah, chunkId, level, lastReviewed, nextSuggested, lastGrade, graded_by, favorite, created_at, synced',
+  grade_history: '++id, progress_id, child_id, family_id, graded_by, graded_at, created_at',
   sessions: '++id, child_id, family_id, date, duration, mode, type, screen_time, audio_only_time, ayahs_reviewed, ayahs_new, created_at, synced',
   events: 'id, type, family_id, child_id, client_timestamp, synced',
   audio_cache: 'key, last_used',
