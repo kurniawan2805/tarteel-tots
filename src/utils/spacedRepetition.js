@@ -17,6 +17,25 @@ export const CFR_GRADES = {
   TRY_AGAIN: "try_again"
 };
 
+export const GRADE_EMOJI = {
+  [CFR_GRADES.HAPPY]: "🟢",
+  [CFR_GRADES.OKAY]: "🟡",
+  [CFR_GRADES.TRY_AGAIN]: "🔴"
+};
+
+export function getGradeEmoji(grade) {
+  return GRADE_EMOJI[grade] || "⚪";
+}
+
+export function getGradeLabel(grade) {
+  const labels = {
+    [CFR_GRADES.HAPPY]: "Perfect",
+    [CFR_GRADES.OKAY]: "Good",
+    [CFR_GRADES.TRY_AGAIN]: "Try Again"
+  };
+  return labels[grade] || "Unknown";
+}
+
 /**
  * Calculates next suggested review date based on CFR logic
  */
