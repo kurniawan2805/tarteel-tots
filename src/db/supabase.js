@@ -103,19 +103,22 @@ export async function pullFromCloud(familyId) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, reason: 'no_session' };
 
-    const [childrenRes, sessionsRes, eventsRes] = await Promise.all([
+    const [childrenRes, sessionsRes, eventsRes, gradeHistoryRes] = await Promise.all([
       supabase.from('children').select('*').eq('family_id', familyId),
       supabase.from('sessions').select('*').eq('family_id', familyId),
-      supabase.from('events').select('*').eq('family_id', familyId)
+      supabase.from('events').select('*').eq('family_id', familyId),
+      supabase.from('grade_history').select('*').eq('family_id', familyId)
     ]);
 
     if (childrenRes.error) throw childrenRes.error;
     if (sessionsRes.error) throw sessionsRes.error;
     if (eventsRes.error) throw eventsRes.error;
+    if (gradeHistoryRes.error) throw gradeHistoryRes.error;
 
     const children = childrenRes.data || [];
     const sessions = sessionsRes.data || [];
     const events = eventsRes.data || [];
+    const grade_history = gradeHistoryRes.data || [];
 
     let progress = [];
     if (children.length > 0) {
@@ -134,7 +137,8 @@ export async function pullFromCloud(familyId) {
       children,
       progress,
       sessions,
-      events
+      events,
+      grade_history
     };
   } catch (error) {
     console.error('Pull error:', error);

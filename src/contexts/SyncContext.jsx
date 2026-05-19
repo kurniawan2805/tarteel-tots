@@ -74,6 +74,7 @@ export function SyncProvider({ children }) {
         await db.progress.where('synced').equals(0).modify({ synced: 1 });
         await db.sessions.where('synced').equals(0).modify({ synced: 1 });
         await db.events.where('synced').equals(0).modify({ synced: 1 });
+        await db.grade_history.where('synced').equals(0).modify({ synced: 1 });
         setLastSync(new Date().toISOString());
       } else {
         setSyncError(result.reason);
@@ -135,6 +136,7 @@ export function SyncProvider({ children }) {
         if (result.children.length) await db.children.bulkPut(result.children);
         if (result.progress.length) await db.progress.bulkPut(result.progress.map(p => ({ ...p, synced: 1 })));
         if (result.sessions.length) await db.sessions.bulkPut(result.sessions.map(s => ({ ...s, synced: 1 })));
+        if (result.grade_history.length) await db.grade_history.bulkPut(result.grade_history.map(gh => ({ ...gh, synced: 1 })));
         if (result.events.length) {
           const events = result.events.map(e => ({ ...e, synced: 1 }));
           await db.events.bulkPut(events);
