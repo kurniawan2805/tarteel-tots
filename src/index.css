@@ -40,6 +40,19 @@
   --shadow-xl: 0 12px 40px rgba(58, 64, 90, 0.15);
 }
 
+/* Text color utilities for accessibility */
+@layer utilities {
+  .text-primary {
+    color: var(--color-primary-dark);
+  }
+  .text-secondary {
+    color: var(--color-secondary-dark);
+  }
+  .text-review {
+    color: var(--color-review-dark);
+  }
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
@@ -133,7 +146,7 @@ body {
 }
 
 .btn-primary {
-  background-color: var(--color-primary);
+  background-color: var(--color-primary-dark);
   color: white;
   font-weight: 700;
   font-size: 16px;
@@ -151,11 +164,11 @@ body {
 
 .btn-primary:active {
   transform: scale(0.96);
-  background-color: var(--color-primary-dark);
+  background-color: var(--color-primary);
 }
 
 .btn-secondary {
-  background-color: var(--color-review);
+  background-color: var(--color-secondary-dark);
   color: white;
   font-weight: 700;
   font-size: 16px;
@@ -173,7 +186,7 @@ body {
 
 .btn-secondary:active {
   transform: scale(0.96);
-  background-color: var(--color-review-dark);
+  background-color: var(--color-secondary);
 }
 
 .card {

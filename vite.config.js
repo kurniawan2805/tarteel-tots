@@ -63,4 +63,18 @@ export default defineConfig({
   server: {
     host: true
   },
+  build: {
+    target: 'esnext',
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
+    },
+    chunkSizeWarningLimit: 600,
+    cssCodeSplit: true,
+    sourcemap: false,
+    reportCompressedSize: true
+  }
 })

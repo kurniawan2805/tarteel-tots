@@ -8,3 +8,4 @@ ON families FOR SELECT
 USING (family_code IS NOT NULL);
 -- Anyone can see families with a code (for joining)
 -- Once they join (membership created), other policies apply
+ x
