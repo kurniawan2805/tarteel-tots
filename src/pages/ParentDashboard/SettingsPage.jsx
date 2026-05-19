@@ -7,8 +7,9 @@ import { useAuth } from '../../hooks/useAuth';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { isLocalMode, activeFamily } = useAuth();
+  const { isLocalMode, activeFamily, regenerateCode } = useAuth();
   const { saveEvent, online, lastSync, syncing } = useSync();
+  const [regenerating, setRegenerating] = useState(false);
 
   const settings = useLiveQuery(async () => {
     const items = await db.settings.toArray();
@@ -41,6 +42,31 @@ export default function SettingsPage() {
       await db.delete();
       window.location.reload();
     }
+  };
+
+  const handleRegenerateCode = async () => {
+    if (!window.confirm('Generate new invite code? Old code will stop working.')) return;
+    try {
+      setRegenerating(true);
+      await regenerateCode();
+      alert('✅ New invite code generated!');
+    } catch (err) {
+      alert(`❌ Failed to regenerate: ${err.message}`);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const getExpiryStatus = () => {
+    if (!activeFamily?.expires_at) return null;
+    const now = new Date();
+    const expiry = new Date(activeFamily.expires_at);
+    const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    
+    if (daysLeft < 0) return { text: '⚠️ Expired', color: 'danger', urgent: true };
+    if (daysLeft === 0) return { text: '🔴 Expires today', color: 'danger', urgent: true };
+    if (daysLeft <= 3) return { text: `⏱️ Expires in ${daysLeft}d`, color: 'secondary', urgent: true };
+    return { text: `✅ Valid for ${daysLeft}d`, color: 'primary', urgent: false };
   };
 
   return (
@@ -83,16 +109,35 @@ export default function SettingsPage() {
                    <p className="text-sm font-mono font-black text-primary tracking-widest">{activeFamily.family_code}</p>
                 </div>
               </div>
+
+              {getExpiryStatus() && (
+                <div className={`mb-3 px-3 py-2 rounded-lg text-[10px] font-bold text-center ${
+                  getExpiryStatus().color === 'danger' ? 'bg-danger bg-opacity-10 text-danger' : 'bg-secondary bg-opacity-10 text-secondary'
+                }`}>
+                  {getExpiryStatus().text}
+                </div>
+              )}
               
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(activeFamily.family_code);
-                  alert('Invite code copied! Share this with other family members so they can join your space.');
-                }}
-                className="w-full py-3 bg-white border-2 border-primary text-primary font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-primary hover:text-white transition-all active:scale-[0.98]"
-              >
-                Copy Invite Code
-              </button>
+              <div className="space-y-2">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeFamily.family_code);
+                    alert('Invite code copied! Share this with other family members so they can join your space.');
+                  }}
+                  className="w-full py-3 bg-white border-2 border-primary text-primary font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-primary hover:text-white transition-all active:scale-[0.98]"
+                >
+                  Copy Invite Code
+                </button>
+                <button 
+                  onClick={handleRegenerateCode}
+                  disabled={regenerating}
+                  className={`w-full py-2 bg-white border-2 border-secondary text-secondary font-bold text-xs uppercase tracking-widest rounded-xl transition-all active:scale-[0.98] ${
+                    regenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-secondary hover:text-white'
+                  }`}
+                >
+                  {regenerating ? 'Regenerating...' : 'Regenerate Code'}
+                </button>
+              </div>
             </div>
           </section>
         )}

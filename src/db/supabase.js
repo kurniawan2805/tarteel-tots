@@ -219,6 +219,26 @@ export async function createMembership(familyId, profileId, role = 'guardian', l
   return data;
 }
 
+export async function regenerateFamilyCode(familyId) {
+  if (!supabase) return null;
+
+  const newCode = `TT-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('families')
+    .update({
+      family_code: newCode,
+      expires_at: expiresAt
+    })
+    .eq('id', familyId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getMyMemberships() {
   if (!supabase) return [];
   const { data, error } = await supabase

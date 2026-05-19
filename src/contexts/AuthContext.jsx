@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase, findFamilyByCode, createFamily, createMembership } from '../db/supabase';
+import { supabase, findFamilyByCode, createFamily, createMembership, regenerateFamilyCode } from '../db/supabase';
 import { initLocalDB, db } from '../db/dexie';
 import { AuthContext } from './AuthContextInstance';
 
@@ -188,6 +188,13 @@ export function AuthProvider({ children }) {
     return family;
   }, [user, profile]);
 
+  const regenerateCode = useCallback(async () => {
+    if (!familyId) throw new Error('No active family');
+    const updatedFamily = await regenerateFamilyCode(familyId);
+    setActiveFamily(updatedFamily);
+    return updatedFamily;
+  }, [familyId]);
+
   const startLocalMode = useCallback(async () => {
     setIsLocalMode(true);
     setLoading(false);
@@ -206,9 +213,9 @@ export function AuthProvider({ children }) {
 
   const authValue = useMemo(() => ({
     user, profile, familyId, activeFamily, loading, isLocalMode, onboardingComplete,
-    loginWithEmail, signupWithEmail, initFamilySpace, joinFamilySpace, startLocalMode, logout,
+    loginWithEmail, signupWithEmail, initFamilySpace, joinFamilySpace, regenerateCode, startLocalMode, logout,
     refreshOnboarding: checkOnboarding
-  }), [user, profile, familyId, activeFamily, loading, isLocalMode, onboardingComplete, loginWithEmail, signupWithEmail, initFamilySpace, joinFamilySpace, startLocalMode, logout, checkOnboarding]);
+  }), [user, profile, familyId, activeFamily, loading, isLocalMode, onboardingComplete, loginWithEmail, signupWithEmail, initFamilySpace, joinFamilySpace, regenerateCode, startLocalMode, logout, checkOnboarding]);
 
   return (
     <AuthContext.Provider value={authValue}>
