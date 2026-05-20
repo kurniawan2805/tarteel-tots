@@ -1,11 +1,10 @@
 -- Migration: Switch primary keys to UUID for offline-first compatibility
--- FIXED: Drops policies that depend on column types before altering them.
+-- FIXED: Uses dynamic SQL and existence checks to handle missing tables (like grade_history).
 
 BEGIN;
 
 -- 1. DROP POLICIES ON AFFECTED TABLES
--- Using a DO block to dynamically drop all policies on tables we're about to modify.
--- This resolves the "cannot alter type of a column used in a policy definition" error.
+-- This uses dynamic SQL to only attempt dropping policies on tables that actually exist.
 DO $$ 
 DECLARE 
     r RECORD;
@@ -25,44 +24,55 @@ DROP TRIGGER IF EXISTS child_changes_trigger ON children;
 DROP FUNCTION IF EXISTS log_child_changes();
 
 -- 3. ALTER COLUMNS TO UUID
--- Note: This will assign NEW random UUIDs to existing rows, effectively breaking existing relationships.
--- For development purposes this is usually fine.
+-- Only alter tables if they exist to prevent "relation does not exist" errors.
 
--- CHILDREN
+-- CHILDREN (Required)
 ALTER TABLE children ALTER COLUMN id DROP IDENTITY IF EXISTS;
 ALTER TABLE children ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
 ALTER TABLE children ALTER COLUMN id SET DEFAULT uuid_generate_v4();
 
--- PROGRESS
+-- PROGRESS (Required)
 ALTER TABLE progress ALTER COLUMN id DROP IDENTITY IF EXISTS;
 ALTER TABLE progress ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
 ALTER TABLE progress ALTER COLUMN id SET DEFAULT uuid_generate_v4();
 ALTER TABLE progress ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
 
--- SESSIONS
+-- SESSIONS (Required)
 ALTER TABLE sessions ALTER COLUMN id DROP IDENTITY IF EXISTS;
 ALTER TABLE sessions ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
 ALTER TABLE sessions ALTER COLUMN id SET DEFAULT uuid_generate_v4();
 ALTER TABLE sessions ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
 
--- GARDEN STATE
-ALTER TABLE garden_state ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
+-- GARDEN STATE (Optional)
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'garden_state') THEN
+        ALTER TABLE garden_state ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
+    END IF;
+END $$;
 
--- GRADE HISTORY
-ALTER TABLE grade_history ALTER COLUMN id DROP IDENTITY IF EXISTS;
-ALTER TABLE grade_history ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
-ALTER TABLE grade_history ALTER COLUMN id SET DEFAULT uuid_generate_v4();
-ALTER TABLE grade_history ALTER COLUMN progress_id SET DATA TYPE UUID USING (uuid_generate_v4());
-ALTER TABLE grade_history ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
+-- GRADE HISTORY (Optional)
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'grade_history') THEN
+        ALTER TABLE grade_history ALTER COLUMN id DROP IDENTITY IF EXISTS;
+        ALTER TABLE grade_history ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
+        ALTER TABLE grade_history ALTER COLUMN id SET DEFAULT uuid_generate_v4();
+        ALTER TABLE grade_history ALTER COLUMN progress_id SET DATA TYPE UUID USING (uuid_generate_v4());
+        ALTER TABLE grade_history ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
+    END IF;
+END $$;
 
--- EVENTS
+-- EVENTS (Required)
 ALTER TABLE events ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
 
--- CHILD AUDIT LOG
-ALTER TABLE child_audit_log ALTER COLUMN id DROP IDENTITY IF EXISTS;
-ALTER TABLE child_audit_log ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
-ALTER TABLE child_audit_log ALTER COLUMN id SET DEFAULT uuid_generate_v4();
-ALTER TABLE child_audit_log ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
+-- CHILD AUDIT LOG (Optional)
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'child_audit_log') THEN
+        ALTER TABLE child_audit_log ALTER COLUMN id DROP IDENTITY IF EXISTS;
+        ALTER TABLE child_audit_log ALTER COLUMN id SET DATA TYPE UUID USING (uuid_generate_v4());
+        ALTER TABLE child_audit_log ALTER COLUMN id SET DEFAULT uuid_generate_v4();
+        ALTER TABLE child_audit_log ALTER COLUMN child_id SET DATA TYPE UUID USING (uuid_generate_v4());
+    END IF;
+END $$;
 
 
 -- 4. RECREATE TRIGGER & FUNCTION (updated for UUID)
@@ -123,7 +133,7 @@ FOR EACH ROW
 EXECUTE FUNCTION log_child_changes();
 
 
--- 5. RECREATE RELEVANT POLICIES (Consolidated from previous migrations)
+-- 5. RECREATE RELEVANT POLICIES (Consolidated)
 
 -- CHILDREN
 CREATE POLICY "Users can view family children" ON children FOR SELECT USING (family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid()));
@@ -142,20 +152,32 @@ CREATE POLICY "Users can insert family sessions" ON sessions FOR INSERT WITH CHE
 CREATE POLICY "Users can update family sessions" ON sessions FOR UPDATE USING (family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid()));
 
 -- GARDEN STATE
-CREATE POLICY "Users can view garden state for their family" ON garden_state FOR SELECT USING (child_id IN (SELECT id FROM children WHERE family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid())));
-CREATE POLICY "Users can update garden state for their family" ON garden_state FOR UPDATE USING (child_id IN (SELECT id FROM children WHERE family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid())));
-CREATE POLICY "Users can insert garden state for their family" ON garden_state FOR INSERT WITH CHECK (child_id IN (SELECT id FROM children WHERE family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid())));
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'garden_state') THEN
+        CREATE POLICY "Users can view garden state for their family" ON garden_state FOR SELECT USING (child_id IN (SELECT id FROM children WHERE family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid())));
+        CREATE POLICY "Users can update garden state for their family" ON garden_state FOR UPDATE USING (child_id IN (SELECT id FROM children WHERE family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid())));
+        CREATE POLICY "Users can insert garden state for their family" ON garden_state FOR INSERT WITH CHECK (child_id IN (SELECT id FROM children WHERE family_id IN (SELECT DISTINCT family_id FROM memberships WHERE profile_id = auth.uid())));
+    END IF;
+END $$;
 
 -- GRADE HISTORY
-CREATE POLICY "Users can view grade history for their family" ON grade_history FOR SELECT USING (family_id IN (SELECT family_id FROM profiles WHERE id = auth.uid()));
-CREATE POLICY "Users can insert grade history for their family" ON grade_history FOR INSERT WITH CHECK (family_id IN (SELECT family_id FROM profiles WHERE id = auth.uid()));
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'grade_history') THEN
+        CREATE POLICY "Users can view grade history for their family" ON grade_history FOR SELECT USING (family_id IN (SELECT family_id FROM profiles WHERE id = auth.uid()));
+        CREATE POLICY "Users can insert grade history for their family" ON grade_history FOR INSERT WITH CHECK (family_id IN (SELECT family_id FROM profiles WHERE id = auth.uid()));
+    END IF;
+END $$;
 
 -- EVENTS
 CREATE POLICY "Users can view events in their family" ON events FOR SELECT USING (family_id IN (SELECT family_id FROM profiles WHERE id = auth.uid()));
 CREATE POLICY "Users can insert events for their family" ON events FOR INSERT WITH CHECK (family_id IN (SELECT family_id FROM profiles WHERE id = auth.uid()));
 
 -- AUDIT LOG
-CREATE POLICY "Users can view audit log for their family children" ON child_audit_log FOR SELECT USING (family_id IN (SELECT family_id FROM memberships WHERE profile_id = auth.uid()));
-CREATE POLICY "Users can insert audit log for their family" ON child_audit_log FOR INSERT WITH CHECK (family_id IN (SELECT family_id FROM memberships WHERE profile_id = auth.uid()));
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'child_audit_log') THEN
+        CREATE POLICY "Users can view audit log for their family children" ON child_audit_log FOR SELECT USING (family_id IN (SELECT family_id FROM memberships WHERE profile_id = auth.uid()));
+        CREATE POLICY "Users can insert audit log for their family" ON child_audit_log FOR INSERT WITH CHECK (family_id IN (SELECT family_id FROM memberships WHERE profile_id = auth.uid()));
+    END IF;
+END $$;
 
 COMMIT;
