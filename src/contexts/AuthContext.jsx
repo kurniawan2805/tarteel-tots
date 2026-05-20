@@ -36,15 +36,26 @@ export function AuthProvider({ children }) {
           .eq('profile_id', userId)
           .single();
         
+        let currentFamilyId = data.family_id;
+        let currentFamily = null;
+
         if (membership) {
-          setFamilyId(membership.family_id);
-          setActiveFamily(membership.families);
+          currentFamilyId = membership.family_id;
+          currentFamily = membership.families;
         } else if (data.family_id) {
           // Legacy fallback
-          setFamilyId(data.family_id);
           const { data: family } = await supabase.from('families').select('*').eq('id', data.family_id).single();
-          setActiveFamily(family);
+          currentFamily = family;
         }
+
+        setFamilyId(currentFamilyId);
+        setActiveFamily(currentFamily);
+
+        // Update local Dexie profile
+        await db.profiles.put({
+          ...data,
+          family_id: currentFamilyId
+        });
       }
     } catch (err) {
       console.error('Load profile failed:', err);

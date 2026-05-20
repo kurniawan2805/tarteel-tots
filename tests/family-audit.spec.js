@@ -43,8 +43,14 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
         const codeElement = page.locator('code').first();
         expect(await codeElement.textContent()).toMatch(/^TT-[A-Z0-9]{4}$/);
         
-        // Click Continue
+        // Click Continue (takes to Step 3: Linked)
         await page.click('button:has-text("Continue to Dashboard")');
+        
+        // Step 3: Wait for Linked message
+        await page.waitForSelector('text=You\'re Linked', { timeout: 5000 });
+        
+        // Click final Go to Dashboard button
+        await page.click('button:has-text("Go to Dashboard")');
         
         // Should redirect to dashboard/onboarding
         await page.waitForURL(/\/dashboard|\/onboarding/, { timeout: 10000 });

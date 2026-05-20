@@ -3,6 +3,7 @@ import { db } from '../../db/dexie';
 import { useNavigate } from 'react-router-dom';
 import { quranMetaData } from '../../data/quranMeta';
 import { useAuth } from '../../hooks/useAuth';
+import { useSync } from '../../hooks/useSync';
 
 const AVATARS = [
   '🌟', // Shining Star
@@ -22,7 +23,8 @@ const LEARNING_PATHS = [
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { refreshOnboarding } = useAuth();
+  const { refreshOnboarding, familyId, isLocalMode, loading: authLoading } = useAuth();
+  const { saveChild } = useSync();
   const [step, setStep] = useState(1);
   const [children, setChildren] = useState([]);
   const [currentChild, setCurrentChild] = useState({
@@ -35,6 +37,14 @@ export default function OnboardingPage() {
     direction: 'backwards',
     daily_goal_minutes: 10
   });
+
+  if (authLoading || (!isLocalMode && !familyId)) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center">
+        <div className="animate-spin-slow text-4xl">🌴</div>
+      </div>
+    );
+  }
 
   const handlePathChange = (pathId) => {
     const path = LEARNING_PATHS.find(p => p.id === pathId);
@@ -50,7 +60,10 @@ export default function OnboardingPage() {
   const handleAddChild = async () => {
     if (!currentChild.name.trim()) return;
 
+    const childId = crypto.randomUUID();
     const child = {
+      id: childId,
+      family_id: familyId,
       name: currentChild.name,
       age: currentChild.age,
       avatar: currentChild.avatar,
@@ -61,11 +74,12 @@ export default function OnboardingPage() {
         current_surah: currentChild.current_surah,
         current_ayah: currentChild.current_ayah
       },
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      synced: 0
     };
 
-    const id = await db.children.add(child);
-    setChildren([...children, { ...child, id }]);
+    await saveChild(child);
+    setChildren([...children, child]);
     setCurrentChild({
       name: '',
       age: 4,

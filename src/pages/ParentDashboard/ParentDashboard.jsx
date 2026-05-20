@@ -426,6 +426,28 @@ export default function ParentDashboard() {
             {/* Report Card Summary */}
             {selectedChild && (
               <div className="bg-primary bg-opacity-5 -mx-4 -mt-4 p-6 mb-6 border-b border-primary border-opacity-10 rounded-t-2xl">
+                <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">
+                  {children?.map((child) => (
+                    <button
+                      key={child.id}
+                      onClick={() => setSelectedChild(child)}
+                      className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                        selectedChild?.id === child.id
+                          ? 'bg-primary text-white shadow-md'
+                          : 'bg-white text-text-muted hover:bg-bg-dark border border-gray-100'
+                      }`}
+                    >
+                      {child.avatar} {child.name}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => navigate('/onboarding')}
+                    className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold bg-white text-text-muted border border-dashed border-primary border-opacity-20 hover:bg-bg-dark transition-all"
+                  >
+                    + Add Child
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-3 mb-4">
                   <span className="text-4xl">{selectedChild.avatar}</span>
                   <div>

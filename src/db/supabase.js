@@ -33,9 +33,28 @@ export async function syncToCloud(localData) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { success: false, reason: 'no_session' };
 
+    const unsyncedChildren = localData.children.filter(c => !c.synced);
     const unsyncedProgress = localData.progress.filter(p => !p.synced);
     const unsyncedSessions = localData.sessions.filter(s => !s.synced);
     const unsyncedEvents = localData.events.filter(e => !e.synced);
+
+    if (unsyncedChildren.length > 0) {
+      const { error } = await supabase
+        .from('children')
+        .upsert(unsyncedChildren.map(c => ({
+          id: c.id,
+          family_id: c.family_id,
+          name: c.name,
+          age: c.age,
+          avatar: c.avatar,
+          daily_goal_minutes: c.daily_goal_minutes,
+          learning_path: c.learning_path,
+          direction: c.direction,
+          memorization_baseline: c.memorization_baseline,
+          created_at: c.created_at
+        })));
+      if (error) throw error;
+    }
 
     if (unsyncedEvents.length > 0) {
       const { error } = await supabase

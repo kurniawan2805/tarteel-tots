@@ -11,10 +11,25 @@ export function SyncProvider({ children }) {
   const [syncError, setSyncError] = useState(null);
   const [online, setOnline] = useState(navigator.onLine);
 
-  const processEventLocally = useCallback(async (event) => {
-    const { type, payload, child_id, client_timestamp } = event;
+  const processEventLocally = useCallback(async (event, isRemote = false) => {
+    const { type, payload, child_id, client_timestamp, family_id } = event;
+    const syncStatus = isRemote ? 1 : 0;
 
     switch (type) {
+      case 'CHILD_CREATED': {
+        const existing = await db.children.get(payload.id);
+        if (!existing) {
+          await db.children.add({
+            ...payload,
+            family_id,
+            synced: syncStatus
+          });
+        } else if (isRemote) {
+          await db.children.update(payload.id, { synced: 1 });
+        }
+        break;
+      }
+
       case 'GRADED_CHUNK': {
         // Update local progress Read Model
         const { surah, chunkId, level, nextSuggested, lastGrade } = payload;
@@ -24,26 +39,24 @@ export function SyncProvider({ children }) {
         const isNewer = !existing || new Date(client_timestamp) > new Date(existing.lastReviewed);
         
         if (isNewer) {
+          const updateData = {
+            level,
+            lastGrade,
+            lastReviewed: client_timestamp,
+            nextSuggested,
+            synced: syncStatus
+          };
+
           if (existing) {
-            await db.progress.update(existing.id, {
-              level,
-              lastGrade,
-              lastReviewed: client_timestamp,
-              nextSuggested,
-              synced: 1
-            });
+            await db.progress.update(existing.id, updateData);
           } else {
             await db.progress.add({
               child_id,
               surah,
               chunkId,
-              level,
-              lastGrade,
-              lastReviewed: client_timestamp,
-              nextSuggested,
               favorite: false,
               created_at: client_timestamp,
-              synced: 1
+              ...updateData
             });
           }
         }
@@ -55,8 +68,6 @@ export function SyncProvider({ children }) {
         await db.settings.put({ key: payload.key, value: payload.value });
         break;
       }
-      
-      // Add more event types here as needed
     }
   }, []);
 
@@ -71,6 +82,7 @@ export function SyncProvider({ children }) {
       const result = await syncToCloud(localData);
 
       if (result.success) {
+        await db.children.where('synced').equals(0).modify({ synced: 1 });
         await db.progress.where('synced').equals(0).modify({ synced: 1 });
         await db.sessions.where('synced').equals(0).modify({ synced: 1 });
         await db.events.where('synced').equals(0).modify({ synced: 1 });
@@ -117,7 +129,7 @@ export function SyncProvider({ children }) {
         const exists = await db.events.get(newEvent.id);
         if (!exists) {
           await db.events.add({ ...newEvent, synced: 1 });
-          await processEventLocally(newEvent);
+          await processEventLocally(newEvent, true);
         }
       });
 
@@ -133,7 +145,7 @@ export function SyncProvider({ children }) {
     try {
       const result = await pullFromCloud(familyId);
       if (result.success) {
-        if (result.children.length) await db.children.bulkPut(result.children);
+        if (result.children.length) await db.children.bulkPut(result.children.map(c => ({ ...c, synced: 1 })));
         if (result.progress.length) await db.progress.bulkPut(result.progress.map(p => ({ ...p, synced: 1 })));
         if (result.sessions.length) await db.sessions.bulkPut(result.sessions.map(s => ({ ...s, synced: 1 })));
         if (result.grade_history.length) await db.grade_history.bulkPut(result.grade_history.map(gh => ({ ...gh, synced: 1 })));
@@ -142,7 +154,7 @@ export function SyncProvider({ children }) {
           await db.events.bulkPut(events);
           // Re-process all events to ensure local state is correct
           for (const event of events.sort((a,b) => new Date(a.client_timestamp) - new Date(b.client_timestamp))) {
-            await processEventLocally(event);
+            await processEventLocally(event, true);
           }
         }
         setLastSync(new Date().toISOString());
@@ -159,17 +171,29 @@ export function SyncProvider({ children }) {
       family_id: familyId,
       parent_id: user?.id,
       client_timestamp: new Date().toISOString(),
-      synced: (online && !isLocalMode) ? 1 : 0,
+      synced: 0,
       ...eventData
     };
 
     await db.events.add(event);
-    await processEventLocally(event);
+    await processEventLocally(event, false);
 
     if (online && !isLocalMode) {
       performSync();
     }
   }, [familyId, user, online, isLocalMode, performSync, processEventLocally]);
+
+  const saveChild = useCallback(async (childData) => {
+    const childId = childData.id || Math.floor(Math.random() * 1000000); // Temporary ID if not provided
+    await saveEvent({
+      type: 'CHILD_CREATED',
+      child_id: childId,
+      payload: {
+        ...childData,
+        id: childId
+      }
+    });
+  }, [saveEvent]);
 
   const subscribeToChild = useCallback((childId, callback) => {
     if (isLocalMode) return null;
@@ -194,7 +218,7 @@ export function SyncProvider({ children }) {
     const record = {
       ...sessionData,
       created_at: new Date().toISOString(),
-      synced: (online && !isLocalMode) ? 1 : 0
+      synced: 0
     };
 
     await db.sessions.add(record);
@@ -208,7 +232,7 @@ export function SyncProvider({ children }) {
     <SyncContext.Provider value={{
       online, syncing, lastSync, syncError,
       performSync, pullCloudData, subscribeToChild,
-      saveProgress, saveSession, saveEvent
+      saveProgress, saveSession, saveEvent, saveChild
     }}>
       {children}
     </SyncContext.Provider>

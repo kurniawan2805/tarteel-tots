@@ -3,19 +3,24 @@ import { supabase } from '../db/supabase';
 
 export function useChildAuditLog(childId) {
   const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!childId);
   const [error, setError] = useState(null);
+  const [prevChildId, setPrevChildId] = useState(childId);
+
+  // Reset state when childId changes
+  if (childId !== prevChildId) {
+    setPrevChildId(childId);
+    setLogs([]);
+    setLoading(!!childId);
+    setError(null);
+  }
 
   useEffect(() => {
-    if (!childId) {
-      setLogs([]);
-      setLoading(false);
-      return;
-    }
+    if (!childId) return;
 
     const fetchAuditLog = async () => {
+      setLoading(true);
       try {
-        setLoading(true);
         const { data, error: err } = await supabase
           .from('child_audit_log')
           .select('*')
@@ -34,7 +39,6 @@ export function useChildAuditLog(childId) {
 
     fetchAuditLog();
 
-    // Subscribe to real-time changes
     const subscription = supabase
       .channel(`child_audit_${childId}`)
       .on(

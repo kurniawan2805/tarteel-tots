@@ -25,11 +25,11 @@ export default class ErrorBoundary extends React.Component {
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="btn-primary px-8 py-3"
+            className="btn-primary px-8 py-3 mx-auto"
           >
             Reload App
           </button>
-          {process.env.NODE_ENV === 'development' && (
+          {import.meta.env.MODE === 'development' && (
             <pre className="mt-8 p-4 bg-bg-dark text-danger text-xs text-left overflow-auto max-w-full rounded-lg">
               {this.state.error?.toString()}
             </pre>
