@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/dexie';
 import { syncToCloud, pullFromCloud, subscribeToProgress, subscribeToFamilyEvents } from '../db/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -10,6 +11,24 @@ export function SyncProvider({ children }) {
   const [lastSync, setLastSync] = useState(null);
   const [syncError, setSyncError] = useState(null);
   const [online, setOnline] = useState(navigator.onLine);
+
+  const isSyncingRef = useRef(false);
+
+  // Watch for ANY unsynced items across all user tables
+  const unsyncedCount = useLiveQuery(async () => {
+    try {
+      const [c, p, s, e, gh] = await Promise.all([
+        db.children.where('synced').equals(0).count(),
+        db.progress.where('synced').equals(0).count(),
+        db.sessions.where('synced').equals(0).count(),
+        db.events.where('synced').equals(0).count(),
+        db.grade_history.where('synced').equals(0).count()
+      ]);
+      return c + p + s + e + gh;
+    } catch {
+      return 0;
+    }
+  }, []);
 
   const processEventLocally = useCallback(async (event, isRemote = false) => {
     const { type, payload, child_id, client_timestamp, family_id } = event;
@@ -72,29 +91,44 @@ export function SyncProvider({ children }) {
   }, []);
 
   const performSync = useCallback(async () => {
-    if (isLocalMode) return;
+    if (isLocalMode || isSyncingRef.current) return;
 
+    isSyncingRef.current = true;
     setSyncing(true);
     setSyncError(null);
 
     try {
       const localData = await db.exportLocalData();
+      
+      // Only sync if there's actually data
+      const totalItems = Object.values(localData).reduce((acc, arr) => acc + (arr?.length || 0), 0);
+      if (totalItems === 0) {
+        setSyncing(false);
+        isSyncingRef.current = false;
+        return;
+      }
+
       const result = await syncToCloud(localData);
 
       if (result.success) {
-        await db.children.where('synced').equals(0).modify({ synced: 1 });
-        await db.progress.where('synced').equals(0).modify({ synced: 1 });
-        await db.sessions.where('synced').equals(0).modify({ synced: 1 });
-        await db.events.where('synced').equals(0).modify({ synced: 1 });
-        await db.grade_history.where('synced').equals(0).modify({ synced: 1 });
+        // Batch mark as synced
+        await Promise.all([
+          db.children.where('synced').equals(0).modify({ synced: 1 }),
+          db.progress.where('synced').equals(0).modify({ synced: 1 }),
+          db.sessions.where('synced').equals(0).modify({ synced: 1 }),
+          db.events.where('synced').equals(0).modify({ synced: 1 }),
+          db.grade_history.where('synced').equals(0).modify({ synced: 1 })
+        ]);
         setLastSync(new Date().toISOString());
       } else {
         setSyncError(result.reason);
       }
     } catch (error) {
+      console.error('Sync execution failed:', error);
       setSyncError(error.message);
     } finally {
       setSyncing(false);
+      isSyncingRef.current = false;
     }
   }, [isLocalMode]);
 
@@ -111,14 +145,15 @@ export function SyncProvider({ children }) {
     };
   }, []);
 
+  // Automatic Sync Trigger (Reactive)
   useEffect(() => {
-    if (online && user && !isLocalMode) {
+    if (online && user && !isLocalMode && unsyncedCount > 0 && !syncing) {
       const timer = setTimeout(() => {
         performSync();
-      }, 0);
+      }, 1000); // 1s debounce
       return () => clearTimeout(timer);
     }
-  }, [online, user, isLocalMode, performSync]);
+  }, [online, user, isLocalMode, unsyncedCount, performSync, syncing]);
 
   // Subscribe to family events for realtime updates
   useEffect(() => {
@@ -177,14 +212,10 @@ export function SyncProvider({ children }) {
 
     await db.events.add(event);
     await processEventLocally(event, false);
-
-    if (online && !isLocalMode) {
-      performSync();
-    }
-  }, [familyId, user, online, isLocalMode, performSync, processEventLocally]);
+  }, [familyId, user, processEventLocally]);
 
   const saveChild = useCallback(async (childData) => {
-    const childId = childData.id || Math.floor(Math.random() * 1000000); // Temporary ID if not provided
+    const childId = childData.id || crypto.randomUUID();
     await saveEvent({
       type: 'CHILD_CREATED',
       child_id: childId,
@@ -222,11 +253,7 @@ export function SyncProvider({ children }) {
     };
 
     await db.sessions.add(record);
-
-    if (online && !isLocalMode) {
-      performSync();
-    }
-  }, [online, isLocalMode, performSync]);
+  }, []);
 
   return (
     <SyncContext.Provider value={{

@@ -23,11 +23,16 @@ function LoadingScreen() {
 }
 
 function OnboardingCheck({ children }) {
-  const { loading, onboardingComplete } = useAuth();
+  const { loading, onboardingComplete, user, isLocalMode, familyId } = useAuth();
   const location = useLocation();
 
   if (loading || onboardingComplete === null) {
     return <LoadingScreen />;
+  }
+
+  // If logged in but no family, send back to setup
+  if (user && !isLocalMode && !familyId && location.pathname !== '/signup') {
+    return <Navigate to="/signup" replace />;
   }
 
   if (onboardingComplete === false && location.pathname !== '/onboarding') {

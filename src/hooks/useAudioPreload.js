@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getOrFetchAudioBlob, getAyahKey } from '../utils/audioCache';
 
 /**
@@ -7,7 +7,16 @@ import { getOrFetchAudioBlob, getAyahKey } from '../utils/audioCache';
  */
 export function useAudioPreload(ayahQueue, currentIndex) {
   const [status, setStatus] = useState('loading'); // 'loading' | 'ready' | 'partial' | 'error'
-  const [loadedKeys, setLoadedKeys] = useState(new Set());
+  const [isCurrentReady, setIsCurrentReady] = useState(false);
+  const loadedKeysRef = useRef(new Set());
+
+  // Handle empty queue case
+  useEffect(() => {
+    if (!ayahQueue || ayahQueue.length === 0) {
+      setIsCurrentReady(false);
+      setStatus('ready');
+    }
+  }, [ayahQueue]);
 
   useEffect(() => {
     if (!ayahQueue || ayahQueue.length === 0) return;
@@ -15,16 +24,17 @@ export function useAudioPreload(ayahQueue, currentIndex) {
     let mounted = true;
 
     async function preload() {
+       // ...
+
       // Current + next 2
       const windowSize = 3;
       const toLoad = ayahQueue.slice(currentIndex, currentIndex + windowSize);
       
       let successCount = 0;
-      let newKeysFound = [];
       
       for (const ayah of toLoad) {
         const key = getAyahKey(ayah.surah, ayah.ayah_number, ayah.qari);
-        if (loadedKeys.has(key)) {
+        if (loadedKeysRef.current.has(key)) {
           successCount++;
           continue;
         }
@@ -32,7 +42,7 @@ export function useAudioPreload(ayahQueue, currentIndex) {
         try {
           await getOrFetchAudioBlob(ayah.surah, ayah.ayah_number, ayah.qari);
           if (mounted) {
-            newKeysFound.push(key);
+            loadedKeysRef.current.add(key);
             successCount++;
           }
         } catch (err) {
@@ -41,14 +51,11 @@ export function useAudioPreload(ayahQueue, currentIndex) {
       }
 
       if (mounted) {
-        if (newKeysFound.length > 0) {
-          setLoadedKeys(prev => {
-            const updated = new Set(prev);
-            newKeysFound.forEach(k => updated.add(k));
-            return updated;
-          });
-        }
-        
+        // Update current readiness
+        const currentAyah = ayahQueue[currentIndex];
+        const currentKey = currentAyah ? getAyahKey(currentAyah.surah, currentAyah.ayah_number, currentAyah.qari) : null;
+        setIsCurrentReady(loadedKeysRef.current.has(currentKey));
+
         if (successCount === toLoad.length) setStatus('ready');
         else if (successCount > 0) setStatus('partial');
         else setStatus('error');
@@ -60,12 +67,7 @@ export function useAudioPreload(ayahQueue, currentIndex) {
     return () => {
       mounted = false;
     };
-  }, [ayahQueue, currentIndex]); // Removed loadedKeys from dependencies
-
-  const currentAyah = ayahQueue?.[currentIndex];
-  const isCurrentReady = currentAyah 
-    ? loadedKeys.has(getAyahKey(currentAyah.surah, currentAyah.ayah_number, currentAyah.qari))
-    : false;
+  }, [ayahQueue, currentIndex]);
 
   return { status, isCurrentReady };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db/dexie';
@@ -25,10 +25,12 @@ export default function ChildPlayPage() {
     () => db.sessions.where('child_id').equals(parseInt(childId)).reverse().first(),
     [childId]
   );
-  const settings = useLiveQuery(async () => {
+  const rawSettings = useLiveQuery(async () => {
     const items = await db.settings.toArray();
     return Object.fromEntries(items.map(s => [s.key, s.value]));
   }, []);
+
+  const settings = useMemo(() => rawSettings, [rawSettings]);
 
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState(null);

@@ -72,72 +72,74 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const checkLocalSession = useCallback(async () => {
-    try {
-      if (!supabase) {
-        console.warn('Supabase not configured, running in local mode');
-        setIsLocalMode(true);
-        setLoading(false);
-        return;
-      }
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) throw error;
-
-      if (session?.user) {
-        setUser(session.user);
-        await loadProfile(session.user.id);
-      }
-    } catch (err) {
-      console.error('Check local session failed:', err);
-      setIsLocalMode(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadProfile]);
+  const startLocalMode = useCallback(async () => {
+    setIsLocalMode(true);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
+    let authSubscription = null;
     
     async function init() {
       try {
         await initLocalDB();
-        if (mounted) {
-          await checkOnboarding();
-          await checkLocalSession();
+        
+        if (!supabase) {
+          console.warn('Supabase not configured, running in local mode');
+          if (mounted) {
+            setIsLocalMode(true);
+          }
+          return;
         }
+
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (mounted) {
+          if (session?.user) {
+            setUser(session.user);
+            await loadProfile(session.user.id);
+          }
+          await checkOnboarding();
+        }
+
+        // Auth listener
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (mounted) {
+            if (session?.user) {
+              setUser(session.user);
+              await loadProfile(session.user.id);
+              setIsLocalMode(false);
+            } else {
+              setUser(null);
+              setProfile(null);
+              setFamilyId(null);
+              setActiveFamily(null);
+            }
+          }
+        });
+        authSubscription = subscription;
+
       } catch (err) {
         console.error('Initialization failed:', err);
         if (mounted) {
-          setLoading(false);
           setIsLocalMode(true);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
         }
       }
     }
     
     init();
 
-    if (!supabase) return;
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        if (session?.user) {
-          setUser(session.user);
-          loadProfile(session.user.id);
-          setIsLocalMode(false);
-        } else {
-          setUser(null);
-          setProfile(null);
-          setFamilyId(null);
-          setActiveFamily(null);
-        }
-      }
-    });
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      authSubscription?.unsubscribe();
     };
-  }, [checkLocalSession, loadProfile, checkOnboarding]);
+  }, [loadProfile, checkOnboarding]);
 
   const loginWithEmail = useCallback(async (email, password) => {
     if (!supabase) throw new Error('Supabase not configured');
@@ -217,11 +219,6 @@ export function AuthProvider({ children }) {
     setActiveFamily(updatedFamily);
     return updatedFamily;
   }, [familyId]);
-
-  const startLocalMode = useCallback(async () => {
-    setIsLocalMode(true);
-    setLoading(false);
-  }, []);
 
   const logout = useCallback(async () => {
     if (supabase) {

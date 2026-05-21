@@ -23,29 +23,37 @@ export default function ParentDashboard() {
   const { logout, isLocalMode, familyId } = useAuth();
   const { online, syncing, lastSync, saveProgress } = useSync();
 
-  const children = useLiveQuery(() => {
-    if (isLocalMode) return db.children.toArray();
-    if (!familyId) return [];
-    return db.children.where('family_id').equals(familyId).toArray();
-  }, [isLocalMode, familyId]);
+  const rawChildren = useLiveQuery(() => db.children.toArray(), []);
+  const rawSessions = useLiveQuery(() => db.sessions.toArray(), []);
+  const rawProgress = useLiveQuery(() => db.progress.toArray(), []);
+  const rawSettings = useLiveQuery(() => db.settings.toArray(), []);
 
-  const sessions = useLiveQuery(() => {
-    if (isLocalMode) return db.sessions.toArray();
+  const children = useMemo(() => {
+    if (!rawChildren) return [];
+    if (isLocalMode) return rawChildren;
     if (!familyId) return [];
-    return db.sessions.where('family_id').equals(familyId).toArray();
-  }, [isLocalMode, familyId]);
+    return rawChildren.filter(c => c.family_id === familyId);
+  }, [rawChildren, isLocalMode, familyId]);
 
-  const progress = useLiveQuery(async () => {
-    if (isLocalMode) return db.progress.toArray();
+  const sessions = useMemo(() => {
+    if (!rawSessions) return [];
+    if (isLocalMode) return rawSessions;
     if (!familyId) return [];
-    const myChildren = await db.children.where('family_id').equals(familyId).toArray();
-    const childIds = myChildren.map(c => c.id);
-    return db.progress.where('child_id').anyOf(childIds).toArray();
-  }, [isLocalMode, familyId]);
-  const settings = useLiveQuery(async () => {
-    const items = await db.settings.toArray();
-    return Object.fromEntries(items.map(s => [s.key, s.value]));
-  }, []);
+    return rawSessions.filter(s => s.family_id === familyId);
+  }, [rawSessions, isLocalMode, familyId]);
+
+  const progress = useMemo(() => {
+    if (!rawProgress) return [];
+    if (isLocalMode) return rawProgress;
+    if (!familyId || !children.length) return [];
+    const childIds = new Set(children.map(c => c.id));
+    return rawProgress.filter(p => childIds.has(p.child_id));
+  }, [rawProgress, isLocalMode, familyId, children]);
+
+  const settings = useMemo(() => {
+    if (!rawSettings) return {};
+    return Object.fromEntries(rawSettings.map(s => [s.key, s.value]));
+  }, [rawSettings]);
 
   const [selectedChild, setSelectedChild] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
