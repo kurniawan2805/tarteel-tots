@@ -213,9 +213,6 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
       // Navigate to dashboard → verify children shown are from correct family only
       await page.goto('/dashboard');
       
-      // If logged in, should see only this family's children
-      const children = page.locator('[class*="child"], li').first();
-      
       // Audit: just check page loads without error
       expect(page.locator('body')).toBeTruthy();
     });
@@ -288,9 +285,6 @@ test.describe('Phase 1: Family Creation & Multi-Parent Sync Audit', () => {
 
     test('grade history shows all parent grades (not just latest)', async ({ page }) => {
       await page.goto('/dashboard');
-      
-      // Look for history or multiple grades per ayah
-      const history = page.locator('[class*="history"], [class*="grades"]').first();
       
       // Audit check
       expect(page.locator('body')).toBeTruthy();
