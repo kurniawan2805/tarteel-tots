@@ -1,5 +1,6 @@
 -- Migration: Switch primary keys to UUID for offline-first compatibility
 -- FINAL HARDENED VERSION: Wraps every single table/column change in existence checks.
+-- FIXED: Uses $func$ for internal function delimiters to avoid DO block conflict.
 
 BEGIN;
 
@@ -101,7 +102,7 @@ DO $$ BEGIN
        EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'children') THEN
         
         CREATE OR REPLACE FUNCTION log_child_changes()
-        RETURNS TRIGGER AS $$
+        RETURNS TRIGGER AS $func$
         DECLARE
           tracked_fields TEXT[] := ARRAY['name', 'age', 'avatar', 'daily_goal_minutes'];
           field_name TEXT;
@@ -149,7 +150,7 @@ DO $$ BEGIN
           END LOOP;
           RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql;
+        $func$ LANGUAGE plpgsql;
 
         CREATE TRIGGER child_changes_trigger
         AFTER INSERT OR UPDATE ON children
